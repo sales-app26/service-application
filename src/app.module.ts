@@ -23,6 +23,7 @@ import { SupabaseModule } from './modules/supabase/supabase.module';
 import { TransferRejectionsModule } from './modules/transfers/transfer-rejections.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
 import { UsersModule } from './modules/users/users.module';
+import { VersionsModule } from './modules/versions/versions.module';
 
 const MILLISECONDS_PER_SECOND = 1_000;
 
@@ -74,6 +75,7 @@ const MILLISECONDS_PER_SECOND = 1_000;
     LeadsModule,
     TransfersModule,
     ReportsModule,
+    VersionsModule,
   ],
   providers: [
     {

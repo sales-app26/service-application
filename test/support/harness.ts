@@ -34,9 +34,9 @@ export interface Harness {
  */
 export const startHarness = async (): Promise<Harness> => {
   const db = await PGlite.create();
-  await db.exec(
-    readFileSync(join(__dirname, '../../src/database/sql/01_sales_schema.sql'), 'utf8'),
-  );
+  for (const file of ['01_sales_schema.sql', '02_app_versions.sql']) {
+    await db.exec(readFileSync(join(__dirname, '../../src/database/sql', file), 'utf8'));
+  }
 
   const pgServer = new PGLiteSocketServer({ db, port: 0, host: '127.0.0.1', maxConnections: 1 });
   await pgServer.start();

@@ -185,3 +185,16 @@ export const REPORT_ERROR = {
   EXPORT_RANGE_TOO_LONG: `An export can cover at most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days.`,
   DATE_REQUIRED: 'Choose a start and end date.',
 } as const;
+
+export const VERSION_ERROR = {
+  NOT_FOUND: 'That version no longer exists.',
+  EXISTS: (version: string) => `Version ${version} already exists.`,
+  BAD_FORMAT: 'Version must look like 1.2.0 — three numbers separated by dots.',
+  PART_TOO_LARGE: 'Minor and patch numbers must be below 1000.',
+  MAJOR_TOO_LARGE: 'The major number must be below 2000.',
+  NOTE_REQUIRED: 'Add the release note — upload a .md file or write it in.',
+  NOTE_EMPTY: 'The release note can’t be empty.',
+  FILE_TYPE: 'Upload a .md or .txt file.',
+  FILE_TOO_LARGE: 'The file is larger than 512 KB.',
+  FILE_EMPTY: 'That file is empty.',
+} as const;

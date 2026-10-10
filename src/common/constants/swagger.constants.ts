@@ -17,6 +17,7 @@ export const SWAGGER_TAG = {
   TIMELINE: 'Timeline',
   DASHBOARD: 'Dashboard',
   EXPORTS: 'Exports',
+  VERSIONS: 'Versions',
 } as const;
 
 export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
@@ -34,6 +35,7 @@ export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
   [SWAGGER_TAG.TIMELINE]: 'One person’s day, in time order, with photos and map pins.',
   [SWAGGER_TAG.DASHBOARD]: 'Admin numbers: targets, activity, statuses, conversions.',
   [SWAGGER_TAG.EXPORTS]: 'CSV exports for the current filters.',
+  [SWAGGER_TAG.VERSIONS]: 'Release notes: what changed in each version, and who has read it.',
 };
 
 export const SWAGGER_RESPONSE = {

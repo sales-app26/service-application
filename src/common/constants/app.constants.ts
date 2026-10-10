@@ -11,6 +11,7 @@ export const ROUTE = {
   TIMELINE: 'timeline',
   DASHBOARD: 'dashboard',
   EXPORTS: 'exports',
+  VERSIONS: 'versions',
   HEALTH: 'health',
   ID_PARAM: ':id',
 } as const;

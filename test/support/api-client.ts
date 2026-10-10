@@ -52,13 +52,15 @@ export class ApiClient {
     fields: FormFields,
     photo?: Buffer,
     field = 'photo',
+    fileName = 'camera.jpg',
+    contentType = 'image/jpeg',
   ): Promise<ApiResult<T>> {
     const form = new FormData();
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined) form.append(key, String(value));
     }
     if (photo) {
-      form.append(field, new Blob([new Uint8Array(photo)], { type: 'image/jpeg' }), 'camera.jpg');
+      form.append(field, new Blob([new Uint8Array(photo)], { type: contentType }), fileName);
     }
     return this.send('POST', path, form);
   }

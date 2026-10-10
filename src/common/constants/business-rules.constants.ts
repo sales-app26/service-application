@@ -5,6 +5,11 @@ import { LeadStatus } from '../enums';
  * here so confirming or changing one is a one-line edit.
  */
 export const BUSINESS_RULE = {
+  /** A release note is text — 512 KB is already a book. */
+  RELEASE_NOTE_MAX_BYTES: 512 * 1024,
+  VERSION_TITLE_MAX_LENGTH: 120,
+  VERSION_TAG_MAX_LENGTH: 40,
+  VERSION_TAGS_MAX: 8,
   /** PRD §5.1 — Assumption 13. */
   PASSWORD_MIN_LENGTH: 8,
   PASSWORD_MAX_LENGTH: 72,

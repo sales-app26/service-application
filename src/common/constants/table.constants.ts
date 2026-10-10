@@ -15,6 +15,8 @@ export const TABLE = {
   LEADS: 'leads',
   FOLLOW_UPS: 'follow_ups',
   LEAD_TRANSFERS: 'lead_transfers',
+  APP_VERSIONS: 'app_versions',
+  APP_VERSION_VIEWS: 'app_version_views',
 } as const;
 
 /**
@@ -53,4 +55,5 @@ export const DB_CONSTRAINT = {
   FOLLOW_UPS_CLIENT_REQUEST: 'follow_ups_client_request_id_key',
   LEAD_TRANSFERS_ONE_PENDING: 'lead_transfers_one_pending_per_lead',
   PROJECT_MEMBERS_PROJECT_USER: 'project_members_project_user_key',
+  APP_VERSIONS_VERSION: 'app_versions_version_key',
 } as const;

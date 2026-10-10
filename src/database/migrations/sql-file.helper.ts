@@ -18,6 +18,8 @@ const SQL_DIRECTORY = join(__dirname, '..', 'sql');
 export const SQL_FILE = {
   SALES_SCHEMA: '01_sales_schema.sql',
   SALES_SCHEMA_DOWN: '01_sales_schema_down.sql',
+  APP_VERSIONS: '02_app_versions.sql',
+  APP_VERSIONS_DOWN: '02_app_versions_down.sql',
 } as const;
 
 export const readSqlFile = (fileName: string): string =>
