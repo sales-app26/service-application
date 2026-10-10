@@ -119,9 +119,11 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Bulk import leads from a CSV and assign them',
     description: [
-      '`multipart/form-data`: `file` (CSV, up to 1,000 rows and 1 MB), and optionally `defaultLocation`, `ownerIds` (comma-separated member ids) and `dryRun`.',
+      '`multipart/form-data`: `file` (CSV, up to 1,000 rows and 1 MB), and optionally `defaultLocation`, `ownerId` (one member gets every row), `ownerIds` (comma-separated member ids), `assignments` (JSON row → member id), `review` and `dryRun`.',
       '',
       'Columns (first row, any order, case-insensitive): **name** and **phone** are required; `business_name`, `location`, `notes` and `owner_email` are optional. Rows with an `owner_email` go to that member; the rest are shared evenly, in file order, among `ownerIds`. Rows with no `location` use `defaultLocation`.',
+      '',
+      'To assign on screen: send the file with `dryRun=true&review=true`, which lists every importable row in `rows` without needing owners; then send it again with `assignments`.',
       '',
       'Imported leads start as New with no follow-up and no visit photo. Rows that cannot be imported (bad phone, unknown owner, a number already a lead here or repeated in the file) are skipped and listed; the others go in. `dryRun=true` returns the same report and changes nothing.',
     ].join('\n'),

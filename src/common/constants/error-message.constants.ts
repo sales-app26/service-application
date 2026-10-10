@@ -115,6 +115,8 @@ export const IMPORT_ERROR = {
   MISSING_COLUMNS: 'The first row must name the columns, including name and phone.',
   EMPTY: 'The file has no leads in it.',
   OWNER_NOT_MEMBER: 'Choose only active members of this project to receive the leads.',
+  ASSIGNMENTS_INVALID: 'The lead assignments could not be read. Check the file again.',
+  UNASSIGNED: 'Every lead needs a person. Assign the rest, then import.',
   RACE: 'Some of these numbers were added by someone else a moment ago. Check the file again.',
   ROW_NAME: 'Name is missing.',
   ROW_PHONE: 'Phone must be a 10-digit Indian mobile number.',

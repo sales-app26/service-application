@@ -289,6 +289,77 @@ describe('Bulk import and person summary (e2e)', () => {
         byOwner: [{ user: { name: 'Priya Desai' }, count: 1 }],
       });
     });
+
+    it('review: lists every row with no owner needed, then imports the on-screen assignments', async () => {
+      const online = await admin.post('/projects', {
+        name: 'Review Drive',
+        type: 'online',
+        startDate: '2026-09-01',
+      });
+      const pid = online.body.data.id;
+      for (const id of [ids.meera, ids.ravi, ids.priya]) {
+        await admin.post(`/projects/${pid}/members`, { userId: id });
+      }
+      const csv =
+        header +
+        'One,9876511001,,Pune,,\n' +
+        'Two,9876511002,,Pune,,nobody@pronttera.in\n' +
+        'Three,9876511003,,Pune,,priya@pronttera.in\n';
+
+      const review = await upload(moderator, pid, csv, { review: 'true', dryRun: 'true' });
+      expect(review.status).toBe(200);
+      expect(review.body.data).toMatchObject({ importable: 3, invalid: 0 });
+      // owner_email pre-fills where it names a member; an unknown one is just left open.
+      expect(review.body.data.rows.map((r: any) => [r.row, r.owner?.name ?? null])).toEqual([
+        [2, null],
+        [3, null],
+        [4, 'Priya Desai'],
+      ]);
+
+      // Importing with rows still unassigned is refused, and nothing is saved.
+      const partial = await upload(moderator, pid, csv, {
+        assignments: JSON.stringify({ 2: ids.ravi }),
+      });
+      expect(partial.status).toBe(400);
+      expect(await leadsOf(admin, pid)).toHaveLength(0);
+
+      const bad = await upload(moderator, pid, csv, {
+        assignments: JSON.stringify({ 2: ids.karan, 3: ids.ravi }),
+      });
+      expect(bad.status).toBe(422);
+
+      const res = await upload(moderator, pid, csv, {
+        assignments: JSON.stringify({ 2: ids.ravi, 3: ids.ravi, 4: ids.ravi }),
+      });
+      expect(res.status).toBe(200);
+      // On-screen picks win over owner_email.
+      expect(res.body.data.byOwner).toEqual([
+        { user: { id: ids.ravi, name: 'Ravi Kumar' }, count: 3 },
+      ]);
+    });
+
+    it('one person: every row goes to them, whatever owner_email says', async () => {
+      const online = await admin.post('/projects', {
+        name: 'Single Drive',
+        type: 'online',
+        startDate: '2026-09-01',
+      });
+      const pid = online.body.data.id;
+      for (const id of [ids.meera, ids.ravi, ids.priya]) {
+        await admin.post(`/projects/${pid}/members`, { userId: id });
+      }
+      const csv =
+        header +
+        'One,9876522001,,Pune,,ravi@pronttera.in\n' +
+        'Two,9876522002,,Pune,,nobody@pronttera.in\n';
+      const res = await upload(moderator, pid, csv, { ownerId: ids.priya, ownerIds: ids.ravi });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        imported: 2,
+        invalid: 0,
+        byOwner: [{ user: { name: 'Priya Desai' }, count: 2 }],
+      });
+    });
   });
 
   // ----------------------------------------------------------------- summary

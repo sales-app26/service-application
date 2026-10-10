@@ -110,7 +110,15 @@ export class LeadsImportService {
 
     const members = await this.activeMembers(projectId);
     const byEmail = new Map(members.map((member) => [member.email, member]));
-    const chosen = this.chooseOwners(dto.ownerIds ?? [], members);
+    const single = dto.ownerId ? this.chooseOwners([dto.ownerId], members)[0] : null;
+    const chosen = single ? [] : this.chooseOwners(dto.ownerIds ?? [], members);
+    const assigned = single
+      ? new Map<number, Member>()
+      : this.readAssignments(dto.assignments, members);
+    const dryRun = dto.dryRun === true;
+    // Owners picked on screen: a review checks the file before anyone is picked, and the
+    // import that follows must then cover every row (refused as a whole otherwise).
+    const ownerLater = !single && (dto.review === true || dto.assignments !== undefined);
     const defaultLocation = dto.defaultLocation ? this.tryLocation(dto.defaultLocation) : null;
 
     const problems: ImportProblemDto[] = [];
@@ -142,7 +150,7 @@ export class LeadsImportService {
       const phone = normaliseIndianMobile(rawPhone);
       const businessName = cell(record, 'businessName') || null;
       const notes = (record[columns.notes ?? -1] ?? '').trim() || null;
-      const ownerEmail = cell(record, 'ownerEmail').toLowerCase();
+      let ownerEmail = single ? '' : cell(record, 'ownerEmail').toLowerCase();
       const label = { name: name || '(no name)', phone: rawPhone };
 
       if (!name) return fail('invalid', row, label.name, label.phone, IMPORT_ERROR.ROW_NAME);
@@ -169,9 +177,11 @@ export class LeadsImportService {
       }
 
       if (ownerEmail && !byEmail.has(ownerEmail)) {
-        return fail('invalid', row, name, phone, IMPORT_ERROR.ROW_OWNER_UNKNOWN);
+        // Someone picks the owner on screen instead, so the unknown email doesn't matter.
+        if (ownerLater || assigned.has(row)) ownerEmail = '';
+        else return fail('invalid', row, name, phone, IMPORT_ERROR.ROW_OWNER_UNKNOWN);
       }
-      if (!ownerEmail && chosen.length === 0) {
+      if (!single && !assigned.has(row) && !ownerEmail && chosen.length === 0 && !ownerLater) {
         return fail('invalid', row, name, phone, IMPORT_ERROR.ROW_NO_OWNER);
       }
 
@@ -203,23 +213,36 @@ export class LeadsImportService {
       ready.push(candidate);
     }
 
-    // ---- owners: the file's own column first, the rest shared evenly in file order
+    // ---- owners: one person for all; else picked on screen, then the file's own column,
+    // then the rest shared evenly in file order
     let turn = 0;
     for (const candidate of ready as Array<ReadyRow & { ownerEmail: string }>) {
-      candidate.owner = candidate.ownerEmail
-        ? (byEmail.get(candidate.ownerEmail) ?? null)
-        : (chosen[turn++ % chosen.length] ?? null);
+      candidate.owner =
+        single ??
+        assigned.get(candidate.row) ??
+        (candidate.ownerEmail
+          ? (byEmail.get(candidate.ownerEmail) ?? null)
+          : (chosen[turn++ % chosen.length] ?? null));
     }
+    if (!dryRun && ready.some((r) => !r.owner)) throw this.bad(IMPORT_ERROR.UNASSIGNED);
 
     const counts = new Map<string, { member: Member; count: number }>();
     for (const r of ready) {
-      const entry = counts.get(r.owner!.id) ?? { member: r.owner!, count: 0 };
+      if (!r.owner) continue;
+      const entry = counts.get(r.owner.id) ?? { member: r.owner, count: 0 };
       entry.count += 1;
-      counts.set(r.owner!.id, entry);
+      counts.set(r.owner.id, entry);
     }
 
-    const dryRun = dto.dryRun === true;
     if (!dryRun && ready.length > 0) await this.insert(actor, projectId, ready);
+    const present = (r: ReadyRow): ImportSampleDto => ({
+      row: r.row,
+      name: r.name,
+      phone: r.phone,
+      businessName: r.businessName,
+      location: r.location,
+      owner: r.owner ? { id: r.owner.id, name: r.owner.name } : null,
+    });
 
     problems.sort((a, b) => a.row - b.row);
     const listed = problems.slice(0, BUSINESS_RULE.IMPORT_MAX_PROBLEMS_LISTED);
@@ -235,14 +258,8 @@ export class LeadsImportService {
         .map(({ member, count }) => ({ user: { id: member.id, name: member.name }, count })),
       problems: listed,
       problemsTruncated: problems.length > listed.length,
-      sample: ready.slice(0, SAMPLE_SIZE).map((r): ImportSampleDto => ({
-        row: r.row,
-        name: r.name,
-        phone: r.phone,
-        businessName: r.businessName,
-        location: r.location,
-        owner: { id: r.owner!.id, name: r.owner!.name },
-      })),
+      sample: ready.slice(0, SAMPLE_SIZE).map(present),
+      rows: ready.map(present),
     };
   }
 
@@ -311,6 +328,26 @@ export class LeadsImportService {
       if (!member) throw new BusinessException(IMPORT_ERROR.OWNER_NOT_MEMBER);
       return member;
     });
+  }
+
+  /** Row number → member, from the on-screen assignment; each must be an active member. */
+  private readAssignments(
+    raw: Record<string, string> | undefined,
+    members: Member[],
+  ): Map<number, Member> {
+    const out = new Map<number, Member>();
+    if (!raw) return out;
+    const byId = new Map(members.map((member) => [member.id, member]));
+    for (const [key, id] of Object.entries(raw)) {
+      const row = Number(key);
+      if (!Number.isInteger(row) || row < 2 || typeof id !== 'string') {
+        throw this.bad(IMPORT_ERROR.ASSIGNMENTS_INVALID);
+      }
+      const member = byId.get(id);
+      if (!member) throw new BusinessException(IMPORT_ERROR.OWNER_NOT_MEMBER);
+      out.set(row, member);
+    }
+    return out;
   }
 
   private async existingPhones(projectId: string, phones: string[]): Promise<Map<string, string>> {

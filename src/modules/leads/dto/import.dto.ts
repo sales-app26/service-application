@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -40,6 +41,43 @@ export class ImportLeadsDto {
   @ArrayMaxSize(50)
   @IsUUID('4', { each: true })
   ownerIds?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'One member who gets every row of the file. `owner_email`, `ownerIds` and `assignments` are ignored.',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @IsUUID('4')
+  ownerId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'JSON object of file row number → member id, as picked on screen after a review dry run. Wins over `owner_email` for those rows.',
+    example: '{"2":"b1…","3":"c2…"}',
+    type: String,
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value === 'object') return value;
+    try {
+      return JSON.parse(String(value)) as unknown;
+    } catch {
+      return 'invalid';
+    }
+  })
+  @IsObject()
+  assignments?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    description:
+      '`true` with `dryRun`: rows without an owner yet are not problems; the admin assigns them after. Default `false`.',
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  review?: boolean;
 
   @ApiPropertyOptional({
     description: '`true`: check the file and report, change nothing. Default `false`.',
@@ -83,8 +121,12 @@ export class ImportSampleDto {
   @ApiProperty()
   location: string;
 
-  @ApiProperty({ type: PersonRefDto })
-  owner: PersonRefDto;
+  @ApiProperty({
+    type: PersonRefDto,
+    nullable: true,
+    description: 'Null in a review until assigned.',
+  })
+  owner: PersonRefDto | null;
 }
 
 export class OwnerCountDto {
@@ -132,4 +174,10 @@ export class ImportResultDto {
     description: 'The first few importable rows, as they will be saved.',
   })
   sample: ImportSampleDto[];
+
+  @ApiProperty({
+    type: [ImportSampleDto],
+    description: 'Every importable row, in file order, for assigning on screen.',
+  })
+  rows: ImportSampleDto[];
 }
