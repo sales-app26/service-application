@@ -21,7 +21,7 @@ const logger = new Logger('Swagger');
 
 /** The handful of rules a client integrator has to know before reading any endpoint. */
 const overview = `
-API for the **Sales Tracker**: leads and follow-ups logged against projects, door-to-door visits
+API for the **Pronttera Sales**: leads and follow-ups logged against projects, door-to-door visits
 proven with a live photo and GPS, and conversion targets per sales person.
 
 ### Response format

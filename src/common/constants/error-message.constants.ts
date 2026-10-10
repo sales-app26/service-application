@@ -51,7 +51,7 @@ export const AUTH_ERROR = {
   /** PRD §5.1: one message for both; it never says which was wrong. */
   INVALID_CREDENTIALS: 'Email or password is incorrect',
   ACCOUNT_DEACTIVATED: 'Your account is deactivated. Contact your admin.',
-  ACCOUNT_NOT_SET_UP: 'This login has no account in the Sales Tracker. Contact your admin.',
+  ACCOUNT_NOT_SET_UP: 'This login has no account in Pronttera Sales. Contact your admin.',
   INVALID_REFRESH_TOKEN: 'Your session has expired. Please sign in again.',
   INVALID_SET_PASSWORD_LINK: 'This link has expired or was already used. Ask for a new one.',
   CURRENT_PASSWORD_WRONG: 'The current password is incorrect.',

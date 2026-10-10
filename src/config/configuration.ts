@@ -68,7 +68,7 @@ export const appConfig = registerAs(CONFIG_NAMESPACE.APP, (): AppConfig => {
     isProduction: nodeEnv === NODE_ENVIRONMENT.PRODUCTION,
     isDevelopment: nodeEnv === NODE_ENVIRONMENT.DEVELOPMENT,
     port: toNumber(process.env[ENV.PORT], CONFIG_DEFAULT.PORT),
-    name: process.env[ENV.APP_NAME] ?? 'Sales Tracker API',
+    name: process.env[ENV.APP_NAME] ?? 'Pronttera Sales API',
     apiPrefix: process.env[ENV.API_PREFIX] ?? 'api',
     apiVersion: process.env[ENV.API_VERSION] ?? 'v1',
     corsOrigins: origins.includes('*') || origins.length === 0 ? true : origins,

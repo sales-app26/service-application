@@ -24,7 +24,7 @@ export const envValidationSchema = Joi.object({
     .valid(...Object.values(NODE_ENVIRONMENT))
     .default(NODE_ENVIRONMENT.DEVELOPMENT),
   [ENV.PORT]: Joi.number().port().default(CONFIG_DEFAULT.PORT),
-  [ENV.APP_NAME]: Joi.string().default('Sales Tracker API'),
+  [ENV.APP_NAME]: Joi.string().default('Pronttera Sales API'),
   [ENV.API_PREFIX]: Joi.string().default('api'),
   [ENV.API_VERSION]: Joi.string().default('v1'),
   [ENV.CORS_ORIGINS]: Joi.string().default('*'),
