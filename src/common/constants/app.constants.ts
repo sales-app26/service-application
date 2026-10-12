@@ -90,7 +90,6 @@ export const SUCCESS_MESSAGE = {
   MEMBER_ADDED: 'Member added to the project.',
   MEMBER_REMOVED: 'Member removed from the project.',
   TARGET_UPDATED: 'Target updated.',
-  JOINED_PROJECT: 'Project assigned to you.',
   LEADS_IMPORTED: 'Leads imported.',
   LEADS_IMPORT_CHECKED: 'File checked. Nothing has been imported yet.',
   LEAD_CREATED: 'Lead saved.',

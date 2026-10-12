@@ -92,14 +92,6 @@ export class ProjectsController {
     return this.projectsService.list(actor, query);
   }
 
-  @Get('joinable')
-  @Roles(UserRole.MODERATOR)
-  @ApiOperation({ summary: 'Active projects a moderator can assign to himself' })
-  @ApiOkArrayEnvelope(ProjectDto)
-  joinable(@CurrentUser() actor: AuthenticatedUser): Promise<ProjectDto[]> {
-    return this.projectsService.joinable(actor);
-  }
-
   @Get(ROUTE.ID_PARAM)
   @ApiOperation({ summary: 'Get one project' })
   @ApiOkEnvelope(ProjectDto)
@@ -241,19 +233,6 @@ export class ProjectsController {
     @Body() dto: AddMemberDto,
   ): Promise<MemberDto> {
     return this.membersService.add(actor, params.id, dto);
-  }
-
-  @Post(`${ROUTE.ID_PARAM}/join`)
-  @ApiTags(SWAGGER_TAG.MEMBERS)
-  @Roles(UserRole.MODERATOR)
-  @ResponseMessage(SUCCESS_MESSAGE.JOINED_PROJECT)
-  @ApiOperation({
-    summary: 'Assign a project to myself (moderator)',
-    description: 'Active projects only. No approval needed.',
-  })
-  @ApiCreatedEnvelope(MemberDto)
-  join(@CurrentUser() actor: AuthenticatedUser, @Param() params: UuidParamDto): Promise<MemberDto> {
-    return this.membersService.join(actor, params.id);
   }
 
   @Delete(`${ROUTE.ID_PARAM}/members/:userId`)

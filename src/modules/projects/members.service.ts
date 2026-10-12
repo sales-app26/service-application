@@ -91,18 +91,6 @@ export class MembersService {
     return this.toDto({ ...membership, user }, true);
   }
 
-  /** A moderator assigns an active project to himself, no approval needed (Assumption 2). */
-  async join(actor: AuthenticatedUser, projectId: string): Promise<MemberDto> {
-    const project = await this.access.findProjectOrFail(projectId);
-    if (project.status === ProjectStatus.CLOSED) {
-      throw new BusinessException(MEMBER_ERROR.SELF_ASSIGN_CLOSED, ERROR_CODE.PROJECT_CLOSED);
-    }
-
-    const user = await this.users.findOneOrFail({ where: { id: actor.id } });
-    const membership = await this.upsertMembership(projectId, actor.id, actor.id, {});
-    return this.toDto({ ...membership, user }, true);
-  }
-
   /**
    * Leads stay in the person's name, tagged "Owner removed" for admins to
    * reassign; their pending transfers in this project are rejected. A

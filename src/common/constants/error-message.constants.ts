@@ -103,7 +103,6 @@ export const MEMBER_ERROR = {
   SUPER_ADMIN_NOT_MEMBER: 'Super Admins have access to every project and are not added as members.',
   MODERATOR_ADDS_SALES_ONLY: 'Only the Super Admin can add moderators to a project.',
   MODERATOR_REMOVES_SALES_ONLY: 'Only the Super Admin can remove another moderator.',
-  SELF_ASSIGN_CLOSED: 'A closed project cannot be assigned.',
   ALREADY_ASSIGNED: 'This project is already assigned to you.',
   TARGET_PAIR: 'Set the target number and the period together, or clear both.',
   TARGET_NOT_ALLOWED:

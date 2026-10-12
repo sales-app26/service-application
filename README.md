@@ -63,7 +63,7 @@ npm run test:e2e  # boots the API against PGlite and a fake Supabase
 | --- | --- |
 | Auth | `POST auth/login · refresh · logout · forgot-password · set-password · change-password`, `GET/PATCH auth/me` |
 | Users | `GET/POST users`, `GET/PATCH users/:id`, `POST users/:id/deactivate · reactivate`, `PATCH users/:id/role · email` |
-| Projects | `GET/POST projects`, `GET projects/joinable`, `GET/PATCH projects/:id`, `POST projects/:id/close · reopen · image · join`, `DELETE projects/:id/image` |
+| Projects | `GET/POST projects`, `GET/PATCH projects/:id`, `POST projects/:id/close · reopen · image`, `DELETE projects/:id/image` |
 | Members | `GET/POST projects/:id/members`, `DELETE projects/:id/members/:userId`, `PATCH …/:userId/target` |
 | Locations | `GET projects/:id/locations?q=` |
 | Leads | `GET/POST projects/:id/leads`, `GET/PATCH/DELETE leads/:id`, `GET leads/:id/entries` |

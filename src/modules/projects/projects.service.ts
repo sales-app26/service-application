@@ -90,22 +90,6 @@ export class ProjectsService {
     );
   }
 
-  /** "Join a project": active projects a moderator is not yet in (PRD §6). */
-  async joinable(actor: AuthenticatedUser): Promise<ProjectDto[]> {
-    const rows = await this.projects
-      .createQueryBuilder('p')
-      .where('p.status = :status', { status: ProjectStatus.ACTIVE })
-      .andWhere(
-        `NOT EXISTS (SELECT 1 FROM ${SQL_TABLE.PROJECT_MEMBERS} pm
-                      WHERE pm.project_id = p.id AND pm.user_id = :userId AND pm.is_active)`,
-        { userId: actor.id },
-      )
-      .orderBy('p.name', 'ASC')
-      .getMany();
-
-    return this.toDtos(rows, actor);
-  }
-
   async findOne(actor: AuthenticatedUser, projectId: string): Promise<ProjectDto> {
     const project = await this.access.assertCanView(actor, projectId);
     const [dto] = await this.toDtos([project], actor);
