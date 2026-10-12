@@ -31,7 +31,7 @@ export const envValidationSchema = Joi.object({
   [ENV.BODY_LIMIT]: Joi.string().default('1mb'),
   [ENV.THROTTLE_TTL_SECONDS]: Joi.number().integer().min(1).default(60),
   [ENV.THROTTLE_LIMIT]: Joi.number().integer().min(1).default(120),
-  [ENV.APP_URL]: Joi.string().uri().allow('').default(''),
+  [ENV.APP_URL]: Joi.string().uri().required(),
 
   // ------------------------------------------------------------------- database
   [ENV.DATABASE_URL]: Joi.string()
@@ -66,16 +66,13 @@ export const envValidationSchema = Joi.object({
   [ENV.SUPABASE_JWT_SECRET]: Joi.string().allow('').default(''),
   [ENV.SUPABASE_STORAGE_BUCKET]: Joi.string().default('sales-tracker'),
   [ENV.SUPABASE_TIMEOUT_MS]: Joi.number().integer().min(1000).default(10_000),
-  [ENV.AUTH_REDIRECT_URL]: Joi.string().uri().allow('').default(''),
 
   // ----------------------------------------------------------------------- mail
-  // Blank: Supabase sends the invite and reset emails itself.
-  [ENV.BREVO_API_KEY]: Joi.string().allow('').default(''),
-  [ENV.MAIL_FROM_EMAIL]: Joi.when(ENV.BREVO_API_KEY, {
-    is: Joi.string().min(1),
-    then: Joi.string().email().required(),
-    otherwise: Joi.string().email().allow('').default(''),
-  }),
+  // Invite and reset emails are Brevo's alone; Supabase never sends mail, so the
+  // API refuses to start without a key and a verified sender.
+  [ENV.BREVO_API_KEY]: Joi.string().required(),
+  [ENV.BREVO_API_URL]: Joi.string().uri().default('https://api.brevo.com'),
+  [ENV.MAIL_FROM_EMAIL]: Joi.string().email().required(),
   [ENV.MAIL_FROM_NAME]: Joi.string().default('Pronttera Sales'),
 
   // ---------------------------------------------------------------- visit proof

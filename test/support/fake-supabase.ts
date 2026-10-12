@@ -20,7 +20,11 @@ export class FakeSupabase {
   readonly objects = new Map<string, { body: Buffer; contentType: string }>();
   readonly invites: string[] = [];
   readonly recoveries: string[] = [];
+  /** What Brevo was asked to send; the fake stands in for its transactional API. */
+  readonly emails: { to: string; subject: string; text: string }[] = [];
   private readonly refreshTokens = new Map<string, string>();
+  /** One-time `token_hash` values minted by generate_link, spent by /verify. */
+  private readonly linkTokens = new Map<string, string>();
   private server!: Server;
   url = '';
 
@@ -46,6 +50,12 @@ export class FakeSupabase {
     const user = { id, email, password };
     this.users.set(id, user);
     return user;
+  }
+
+  private mint(userId: string): string {
+    const token = randomUUID();
+    this.linkTokens.set(token, userId);
+    return token;
   }
 
   setPassword(userId: string, password: string): void {
@@ -76,6 +86,17 @@ export class FakeSupabase {
 
     if (path.startsWith('/auth/v1')) {
       return this.auth(req, res, path.slice('/auth/v1'.length), url, json);
+    }
+    if (req.method === 'POST' && path === '/v3/smtp/email') {
+      if (req.headers['api-key'] !== 'e2e-brevo-key')
+        return send(res, 401, { message: 'Key not found' });
+      const mail = json() as {
+        to: { email: string }[];
+        subject: string;
+        textContent: string;
+      };
+      this.emails.push({ to: mail.to[0].email, subject: mail.subject, text: mail.textContent });
+      return send(res, 201, { messageId: randomUUID() });
     }
     if (path.startsWith('/storage/v1')) {
       return this.storage(
@@ -120,9 +141,38 @@ export class FakeSupabase {
       }
     }
 
-    if (req.method === 'POST' && path === '/recover') {
-      this.recoveries.push(String(json().email));
-      return send(res, 200, {});
+    // Supabase only mints the one-time token; Brevo (above) does the sending.
+    if (req.method === 'POST' && path === '/admin/generate_link') {
+      const { email, type } = json() as { email: string; type: 'invite' | 'recovery' };
+      const existing = [...this.users.values()].find((user) => user.email === email);
+      if (type === 'invite') {
+        if (existing) {
+          return send(res, 422, {
+            error_code: 'email_exists',
+            msg: 'A user with this email address has already been registered',
+          });
+        }
+        const user = { id: randomUUID(), email, password: null };
+        this.users.set(user.id, user);
+        this.invites.push(email);
+        return send(res, 200, { id: user.id, email, hashed_token: this.mint(user.id) });
+      }
+      if (!existing) return send(res, 404, { error_code: 'user_not_found', msg: 'User not found' });
+      this.recoveries.push(email);
+      return send(res, 200, { id: existing.id, email, hashed_token: this.mint(existing.id) });
+    }
+
+    if (req.method === 'POST' && path === '/verify') {
+      const { token_hash: tokenHash } = json() as { token_hash: string };
+      const userId = this.linkTokens.get(tokenHash);
+      if (!userId) {
+        return send(res, 403, {
+          error_code: 'otp_expired',
+          msg: 'Token has expired or is invalid',
+        });
+      }
+      this.linkTokens.delete(tokenHash); // single use
+      return send(res, 200, await this.session(userId));
     }
 
     if (req.method === 'POST' && path.startsWith('/logout')) {
@@ -134,20 +184,6 @@ export class FakeSupabase {
       if (!userId) return send(res, 401, { msg: 'invalid JWT' });
       this.setPassword(userId, String(json().password));
       return send(res, 200, { id: userId });
-    }
-
-    if (req.method === 'POST' && path === '/invite') {
-      const { email } = json() as { email: string };
-      if ([...this.users.values()].some((user) => user.email === email)) {
-        return send(res, 422, {
-          error_code: 'email_exists',
-          msg: 'A user with this email address has already been registered',
-        });
-      }
-      const user = { id: randomUUID(), email, password: null };
-      this.users.set(user.id, user);
-      this.invites.push(email);
-      return send(res, 200, { id: user.id, email });
     }
 
     if (req.method === 'POST' && path === '/admin/users') {

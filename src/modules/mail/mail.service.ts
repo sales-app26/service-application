@@ -5,7 +5,7 @@ import { CONFIG_NAMESPACE, ERROR_CODE } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { MailConfig } from '../../config/configuration';
 
-const BREVO_SEND_URL = 'https://api.brevo.com/v3/smtp/email';
+const BREVO_SEND_PATH = '/v3/smtp/email';
 const SEND_TIMEOUT_MS = 10_000;
 
 export type AuthMailKind = 'invite' | 'recovery';
@@ -13,9 +13,9 @@ export type AuthMailKind = 'invite' | 'recovery';
 /**
  * The invite and password-reset emails, sent through Brevo's transactional API.
  *
- * Without `BREVO_API_KEY` this is switched off and Supabase sends its own emails,
- * as before. With it, the link in the email is built from `APP_URL`, so it never
- * depends on the Supabase dashboard's Site URL.
+ * The only way these emails go out: Supabase's own mailer is never used, so the
+ * link is built from `APP_URL` and never depends on the Supabase dashboard's
+ * Site URL. A send that fails throws, and the caller decides what to tell the user.
  */
 @Injectable()
 export class MailService {
@@ -24,10 +24,6 @@ export class MailService {
 
   constructor(configService: ConfigService) {
     this.config = configService.getOrThrow<MailConfig>(CONFIG_NAMESPACE.MAIL);
-  }
-
-  get enabled(): boolean {
-    return this.config.brevoApiKey !== '';
   }
 
   async sendAuthLink(
@@ -66,7 +62,7 @@ export class MailService {
   }): Promise<void> {
     let response: Response;
     try {
-      response = await fetch(BREVO_SEND_URL, {
+      response = await fetch(`${this.config.brevoApiUrl}${BREVO_SEND_PATH}`, {
         method: 'POST',
         headers: {
           'api-key': this.config.brevoApiKey,

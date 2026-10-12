@@ -145,8 +145,6 @@ export interface SupabaseConfig {
   /** Private bucket for visit photos and project images. */
   storageBucket: string;
   timeoutMs: number;
-  /** Where the invite and password-reset emails send the user. */
-  authRedirectUrl: string;
 }
 
 export const supabaseConfig = registerAs(CONFIG_NAMESPACE.SUPABASE, (): SupabaseConfig => ({
@@ -156,7 +154,6 @@ export const supabaseConfig = registerAs(CONFIG_NAMESPACE.SUPABASE, (): Supabase
   jwtSecret: process.env[ENV.SUPABASE_JWT_SECRET] ?? '',
   storageBucket: process.env[ENV.SUPABASE_STORAGE_BUCKET] ?? 'sales-tracker',
   timeoutMs: toNumber(process.env[ENV.SUPABASE_TIMEOUT_MS], 10_000),
-  authRedirectUrl: process.env[ENV.AUTH_REDIRECT_URL] ?? '',
 }));
 
 // ---------------------------------------------------------------------------
@@ -164,14 +161,17 @@ export const supabaseConfig = registerAs(CONFIG_NAMESPACE.SUPABASE, (): Supabase
 // ---------------------------------------------------------------------------
 
 export interface MailConfig {
-  /** Brevo transactional API key. Blank: Supabase sends the auth emails itself. */
+  /** Brevo transactional API key: the only thing that sends invite and reset emails. */
   brevoApiKey: string;
+  /** Brevo API origin; overridden only by the e2e suite. */
+  brevoApiUrl: string;
   fromEmail: string;
   fromName: string;
 }
 
 export const mailConfig = registerAs(CONFIG_NAMESPACE.MAIL, (): MailConfig => ({
   brevoApiKey: process.env[ENV.BREVO_API_KEY] ?? '',
+  brevoApiUrl: withoutTrailingSlash(process.env[ENV.BREVO_API_URL] ?? 'https://api.brevo.com'),
   fromEmail: process.env[ENV.MAIL_FROM_EMAIL] ?? '',
   fromName: process.env[ENV.MAIL_FROM_NAME] ?? 'Pronttera Sales',
 }));

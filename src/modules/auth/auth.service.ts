@@ -94,11 +94,11 @@ export class AuthService {
   /** Completes an invite or a reset link: the link's token sets the password. */
   async setPassword(dto: SetPasswordDto): Promise<void> {
     try {
-      // Our own (Brevo) links carry a one-time token; Supabase's carry a session token.
-      const accessToken = dto.tokenHash
-        ? (await this.authClient.verifyTokenHash(dto.tokenHash, dto.type ?? 'recovery'))
-            .access_token
-        : dto.accessToken!;
+      // The link's one-time token is spent here, not when the link is opened.
+      const { access_token: accessToken } = await this.authClient.verifyTokenHash(
+        dto.tokenHash,
+        dto.type,
+      );
       await this.tokenVerifier.verify(accessToken);
       await this.authClient.setPasswordWithToken(accessToken, dto.password);
     } catch (error) {

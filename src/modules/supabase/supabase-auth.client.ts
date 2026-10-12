@@ -59,10 +59,13 @@ const EMAIL_EXISTS_CODES = new Set(['email_exists', 'user_already_exists']);
  * client-side session handling is exactly what a server must not have.
  *
  * Two kinds of call:
- *  - **as the user** (`apikey` = anon key): password and refresh grants, the
- *    recovery email, setting a password with a link's token, logout.
- *  - **as the service** (`apikey` + bearer = service-role key): inviting a new
- *    user, changing an email, deleting a half-created account.
+ *  - **as the user** (`apikey` = anon key): password and refresh grants, setting
+ *    a password with a link's token, logout.
+ *  - **as the service** (`apikey` + bearer = service-role key): minting invite and
+ *    recovery tokens, changing an email, deleting a half-created account.
+ *
+ * Supabase never emails anyone: it only mints the one-time token, and Brevo sends
+ * the link (`MailService`).
  */
 @Injectable()
 export class SupabaseAuthClient {
@@ -96,34 +99,19 @@ export class SupabaseAuthClient {
   }
 
   /**
-   * Sends the reset email. Supabase answers 200 for unknown emails too; with Brevo,
-   * an unknown email fails here and the caller swallows it the same way.
+   * Sends the reset email through Brevo. An unknown email fails at the token step,
+   * and the caller swallows it, so the answer never reveals which emails exist.
    */
   async sendRecoveryEmail(email: string): Promise<void> {
-    if (this.mail.enabled) {
-      const { hashedToken } = await this.generateLink('recovery', email);
-      await this.mail.sendAuthLink('recovery', { email }, this.linkFor('recovery', hashedToken));
-      return;
-    }
-    await this.call('POST', `/recover${this.redirectQuery()}`, {
-      key: this.config.anonKey,
-      body: { email },
-    });
+    const { hashedToken } = await this.generateLink('recovery', email);
+    await this.mail.sendAuthLink('recovery', { email }, this.linkFor('recovery', hashedToken));
   }
 
   /**
    * A password-reset link for an admin to share by hand (WhatsApp, SMS…). Nothing is emailed.
-   * Single use; it expires with Supabase's email OTP expiry.
+   * Single use; it expires with the OTP expiry set in the Supabase Auth settings.
    */
   async createRecoveryLink(email: string): Promise<string> {
-    if (!this.appUrl) {
-      throw new BusinessException(
-        'APP_URL is not set on the server, so a link cannot be made.',
-        ERROR_CODE.INTEGRATION_ERROR,
-        undefined,
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    }
     const { hashedToken } = await this.generateLink('recovery', email);
     return this.linkFor('recovery', hashedToken);
   }
@@ -160,26 +148,15 @@ export class SupabaseAuthClient {
    * The returned id becomes `users.id`.
    */
   async inviteUser(email: string, name: string): Promise<SupabaseAuthUser> {
-    if (this.mail.enabled) {
-      const { user, hashedToken } = await this.generateLink('invite', email, { name });
-      try {
-        await this.mail.sendAuthLink(
-          'invite',
-          { email, name },
-          this.linkFor('invite', hashedToken),
-        );
-      } catch (error) {
-        // No email went out, so don't leave a login nobody can reach; the admin can retry.
-        await this.deleteUserAsAdmin(user.id);
-        throw error;
-      }
-      return user;
+    const { user, hashedToken } = await this.generateLink('invite', email, { name });
+    try {
+      await this.mail.sendAuthLink('invite', { email, name }, this.linkFor('invite', hashedToken));
+    } catch (error) {
+      // No email went out, so don't leave a login nobody can reach; the admin can retry.
+      await this.deleteUserAsAdmin(user.id);
+      throw error;
     }
-    return this.call<SupabaseAuthUser>('POST', `/invite${this.redirectQuery()}`, {
-      key: this.config.serviceRoleKey,
-      bearer: this.config.serviceRoleKey,
-      body: { email, data: { name } },
-    });
+    return user;
   }
 
   /** Seeding only: a confirmed login with a known password. */
@@ -272,12 +249,6 @@ export class SupabaseAuthClient {
   private linkFor(type: AuthMailKind, hashedToken: string): string {
     const query = new URLSearchParams({ token_hash: hashedToken, type });
     return `${this.appUrl}/set-password?${query.toString()}`;
-  }
-
-  private redirectQuery(): string {
-    return this.config.authRedirectUrl
-      ? `?redirect_to=${encodeURIComponent(this.config.authRedirectUrl)}`
-      : '';
   }
 
   private async call<T = unknown>(

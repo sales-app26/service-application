@@ -1,5 +1,5 @@
 import { ApiClient } from '../support/api-client';
-import { Harness, startHarness } from '../support/harness';
+import { APP_URL, Harness, startHarness } from '../support/harness';
 
 /** PRD §5.1 — login and session, against the real API. */
 describe('Auth (e2e)', () => {
@@ -78,6 +78,10 @@ describe('Auth (e2e)', () => {
     const unknown = await api.post('/auth/forgot-password', { email: 'ghost@pronttera.in' });
     expect(known.status).toBe(200);
     expect(unknown.body.data).toEqual(known.body.data);
+
+    // Only the real account got a Brevo email, and its link is the app's own.
+    expect(harness.supabase.emails.map((mail) => mail.to)).toEqual(['owner@pronttera.in']);
+    expect(harness.supabase.emails[0].text).toContain(`${APP_URL}/set-password?token_hash=`);
   });
 
   it('refuses an expired token with a clear message', async () => {
@@ -96,19 +100,33 @@ describe('Auth (e2e)', () => {
     });
     expect(created.status).toBe(201);
     expect(harness.supabase.invites).toContain('neha@pronttera.in');
+    expect(harness.supabase.emails.some((mail) => mail.to === 'neha@pronttera.in')).toBe(true);
 
-    const linkToken = await harness.supabase.accessToken(created.body.data.id);
+    const invite = harness.supabase.emails.find((mail) => mail.to === 'neha@pronttera.in')!;
+    const tokenHash = new URL(invite.text.match(/https?:\/\/\S+/u)![0]).searchParams.get(
+      'token_hash',
+    )!;
     const tooShort = await api.post('/auth/set-password', {
-      accessToken: linkToken,
+      tokenHash,
+      type: 'invite',
       password: 'short',
     });
     expect(tooShort.status).toBe(400);
 
     const set = await api.post('/auth/set-password', {
-      accessToken: linkToken,
+      tokenHash,
+      type: 'invite',
       password: 'long-enough-1',
     });
     expect(set.status).toBe(200);
+
+    // The link is single use.
+    const again = await api.post('/auth/set-password', {
+      tokenHash,
+      type: 'invite',
+      password: 'another-long-1',
+    });
+    expect(again.status).toBe(401);
 
     const login = await api.post('/auth/login', {
       email: 'neha@pronttera.in',

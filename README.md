@@ -18,8 +18,9 @@ npm run start:dev             # http://localhost:4100/api/v1, docs at /docs
 
 Supabase needs:
 
-- **Auth**: email provider on. `AUTH_REDIRECT_URL` points at the app screen that reads the token
-  from an invite or reset link and calls `POST /auth/set-password`.
+- **Auth**: email/password login. Supabase only mints the one-time tokens; every invite and reset
+  email is sent by Brevo (`BREVO_API_KEY`, `MAIL_FROM_EMAIL`), and its link is
+  `APP_URL/set-password`, the screen that reads the token and calls `POST /auth/set-password`.
 - **Storage**: a **private** bucket named `SUPABASE_STORAGE_BUCKET`. Photos are only ever served
   through short-lived signed URLs.
 - **Fonts on the server** (Docker images): the photo stamp is rendered by sharp/librsvg, so install

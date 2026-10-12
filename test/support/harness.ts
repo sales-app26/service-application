@@ -66,6 +66,10 @@ export const startHarness = async (): Promise<Harness> => {
     APP_URL,
     THROTTLE_LIMIT: '100000',
     SWAGGER_ENABLED: 'true',
+    // Mail goes to the fake's Brevo endpoint, never the real API, whatever .env holds.
+    BREVO_API_KEY: 'e2e-brevo-key',
+    BREVO_API_URL: supabase.url,
+    MAIL_FROM_EMAIL: 'sales@example.com',
   });
 
   const stopBackends = async (): Promise<void> => {

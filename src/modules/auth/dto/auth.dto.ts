@@ -8,7 +8,6 @@ import {
   IsString,
   MaxLength,
   MinLength,
-  ValidateIf,
 } from 'class-validator';
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
@@ -47,31 +46,19 @@ export class ForgotPasswordDto {
 
 export class SetPasswordDto {
   @ApiProperty({
-    description:
-      'The access token from the invite or reset link (Supabase puts it in the URL fragment after the redirect).',
+    description: 'The one-time `token_hash` from the invite or reset link the API emailed (Brevo).',
   })
-  @ValidateIf((dto: SetPasswordDto) => !dto.tokenHash)
-  @IsString()
-  @IsNotEmpty()
-  accessToken?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Instead of `accessToken`: the one-time `token_hash` from a link the API emailed itself (Brevo).',
-  })
-  @ValidateIf((dto: SetPasswordDto) => !dto.accessToken)
   @IsString()
   @IsNotEmpty()
   @MaxLength(512)
-  tokenHash?: string;
+  tokenHash: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: ['invite', 'recovery'],
-    description: 'With `tokenHash`: the link type.',
+    description: 'The link type, from `type` in the link.',
   })
-  @ValidateIf((dto: SetPasswordDto) => !!dto.tokenHash)
   @IsIn(['invite', 'recovery'])
-  type?: 'invite' | 'recovery';
+  type: 'invite' | 'recovery';
 
   @ApiProperty({ minLength: BUSINESS_RULE.PASSWORD_MIN_LENGTH })
   @IsString()
