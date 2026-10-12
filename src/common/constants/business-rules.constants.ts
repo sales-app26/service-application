@@ -78,6 +78,7 @@ export const STORAGE_FOLDER = {
 /** Reasons written on transfers the system rejects on someone's behalf. */
 export const AUTO_REJECT_REASON = {
   USER_DEACTIVATED: 'User deactivated',
+  USER_DELETED: 'User deleted',
   MEMBER_REMOVED: 'Member removed from the project',
   PROJECT_CLOSED: 'Project closed',
   LEAD_DELETED: 'Lead deleted',

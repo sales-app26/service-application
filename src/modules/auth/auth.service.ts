@@ -95,10 +95,7 @@ export class AuthService {
   async setPassword(dto: SetPasswordDto): Promise<void> {
     try {
       // The link's one-time token is spent here, not when the link is opened.
-      const { access_token: accessToken } = await this.authClient.verifyTokenHash(
-        dto.tokenHash,
-        dto.type,
-      );
+      const accessToken = await this.spendTokenHash(dto.tokenHash, dto.type);
       await this.tokenVerifier.verify(accessToken);
       await this.authClient.setPasswordWithToken(accessToken, dto.password);
     } catch (error) {
@@ -106,6 +103,23 @@ export class AuthService {
         throw SupabaseAuthClient.toBusinessException(error);
       }
       throw new BusinessException(AUTH_ERROR.INVALID_SET_PASSWORD_LINK, ERROR_CODE.UNAUTHORIZED);
+    }
+  }
+
+  /**
+   * The link says invite or recovery, but that part of the URL can get lost on the way
+   * (mail apps, link rewriting). A token of the wrong kind is just "not found" and is
+   * not used up, so the other kind is tried before giving up.
+   */
+  private async spendTokenHash(tokenHash: string, type: 'invite' | 'recovery'): Promise<string> {
+    try {
+      return (await this.authClient.verifyTokenHash(tokenHash, type)).access_token;
+    } catch (error) {
+      if (!(error instanceof SupabaseCallError) || error.failure !== SupabaseFailure.REJECTED) {
+        throw error;
+      }
+      const other = type === 'invite' ? 'recovery' : 'invite';
+      return (await this.authClient.verifyTokenHash(tokenHash, other)).access_token;
     }
   }
 

@@ -42,7 +42,8 @@ import {
  * Accounts are created by an admin, never by sign-up. The Supabase login and
  * the `users` row are created together; if the row fails to save, the login
  * is deleted again so no half-made account is left behind. Users are
- * deactivated and reactivated, never deleted.
+ * deactivated and reactivated; a Super Admin can also delete one, which
+ * anonymises the row (history stays) and removes the login.
  */
 @Injectable()
 export class UsersService {
@@ -62,7 +63,7 @@ export class UsersService {
     actor: AuthenticatedUser,
     query: ListUsersQueryDto,
   ): Promise<PaginatedResponseDto<UserDto>> {
-    const qb = this.users.createQueryBuilder('u');
+    const qb = this.users.createQueryBuilder('u').where('u.deleted_at IS NULL');
 
     // A moderator works with sales persons: he needs to see all of them to add
     // one to his project, but may only manage some (canManage below).
@@ -292,6 +293,118 @@ export class UsersService {
     } catch (error) {
       throw SupabaseAuthClient.toBusinessException(error);
     }
+  }
+
+  /**
+   * Emails the person a reset link (Brevo). Unlike the public "forgot password", a
+   * failure is reported to the admin. Makes any earlier reset link stop working.
+   */
+  async sendResetEmail(actor: AuthenticatedUser, userId: string): Promise<{ email: string }> {
+    const user = await this.findManageableOrFail(actor, userId);
+    if (!user.isActive) throw new ConflictBusinessException(USER_ERROR.RESET_LINK_INACTIVE);
+    try {
+      await this.authClient.sendRecoveryEmail(user.email, user.name);
+      this.logger.log(`Reset email for ${user.id} sent by ${actor.id}`);
+      return { email: user.email };
+    } catch (error) {
+      throw SupabaseAuthClient.toBusinessException(error);
+    }
+  }
+
+  /**
+   * Super Admin only. Their live leads (in every project) go to `transferToId`, as
+   * approved transfers; pending transfers involving them are rejected; their
+   * memberships end. The row stays for the history they logged, anonymised to
+   * "Deleted user" with a placeholder email (so the real one can be reused), and
+   * the Supabase login is removed.
+   */
+  async remove(
+    actor: AuthenticatedUser,
+    userId: string,
+    transferToId: string | undefined,
+  ): Promise<{ leadsMoved: number }> {
+    const user = await this.findOrFail(userId);
+    if (user.deletedAt) throw new NotFoundBusinessException(USER_ERROR.NOT_FOUND);
+    if (user.id === actor.id) throw new ForbiddenBusinessException(USER_ERROR.DELETE_SELF);
+    if (user.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenBusinessException(USER_ERROR.DELETE_SUPER_ADMIN);
+    }
+
+    const leadsMoved = await this.dataSource.transaction(async (manager) => {
+      const leads = (await manager.query(
+        `SELECT id, project_id FROM ${SQL_TABLE.LEADS}
+          WHERE owner_id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [user.id],
+      )) as Array<{ id: string; project_id: string }>;
+
+      await this.transferRejections.rejectPending(
+        manager,
+        { userId: user.id },
+        actor.id,
+        AUTO_REJECT_REASON.USER_DELETED,
+      );
+
+      if (leads.length > 0) {
+        if (!transferToId) throw new BusinessException(USER_ERROR.DELETE_NEEDS_RECIPIENT);
+        const to = await manager.findOne(User, { where: { id: transferToId } });
+        if (
+          !to ||
+          to.id === user.id ||
+          !to.isActive ||
+          to.deletedAt ||
+          to.role === UserRole.SUPER_ADMIN
+        ) {
+          throw new BusinessException(USER_ERROR.DELETE_RECIPIENT_INVALID);
+        }
+
+        // The new owner joins (or rejoins) every project the leads are in.
+        const projectIds = [...new Set(leads.map((lead) => lead.project_id))];
+        await manager.query(
+          `INSERT INTO ${SQL_TABLE.PROJECT_MEMBERS} AS pm (project_id, user_id, assigned_by)
+           SELECT unnest($1::uuid[]), $2, $3
+           ON CONFLICT (project_id, user_id)
+           DO UPDATE SET is_active = true, removed_at = NULL
+           WHERE NOT pm.is_active`,
+          [projectIds, to.id, actor.id],
+        );
+
+        const leadIds = leads.map((lead) => lead.id);
+        await manager.query(
+          `INSERT INTO ${SQL_TABLE.LEAD_TRANSFERS}
+             (lead_id, from_user_id, to_user_id, reason, status, requested_by, decided_by, decided_at)
+           SELECT unnest($1::uuid[]), $2, $3, $4, 'approved', $5, $5, now()`,
+          [leadIds, user.id, to.id, AUTO_REJECT_REASON.USER_DELETED, actor.id],
+        );
+        await manager.query(
+          `UPDATE ${SQL_TABLE.LEADS} SET owner_id = $2 WHERE id = ANY($1::uuid[])`,
+          [leadIds, to.id],
+        );
+      }
+
+      await manager.query(
+        `UPDATE ${SQL_TABLE.PROJECT_MEMBERS} SET is_active = false, removed_at = now()
+          WHERE user_id = $1 AND is_active`,
+        [user.id],
+      );
+      await manager.update(
+        User,
+        { id: user.id },
+        {
+          name: USER_ERROR.DELETED_NAME,
+          email: `deleted-${user.id}@deleted.invalid`,
+          phone: null,
+          isActive: false,
+          deletedAt: new Date(),
+        },
+      );
+      return leads.length;
+    });
+
+    // After the commit: the row already can't sign in, so a failure here only leaves
+    // an orphaned login, which is logged.
+    await this.authClient.deleteUserAsAdmin(user.id);
+    this.logger.log(`User ${user.id} deleted by ${actor.id}; ${leadsMoved} leads moved`);
+    return { leadsMoved };
   }
 
   // ------------------------------------------------------------------ helpers

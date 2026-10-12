@@ -75,6 +75,12 @@ export const USER_ERROR = {
   SAME_ROLE: 'The user already has this role.',
   SAME_EMAIL: 'The user already has this email.',
   RESET_LINK_INACTIVE: 'Reactivate this person first, then make a reset link.',
+  DELETE_SELF: 'You can’t delete your own account.',
+  DELETE_SUPER_ADMIN: 'A Super Admin can’t be deleted. Change their role first.',
+  DELETE_NEEDS_RECIPIENT: 'This person still owns leads. Choose who takes them over.',
+  DELETE_RECIPIENT_INVALID:
+    'Choose an active sales person or moderator, other than the person being deleted, to take over the leads.',
+  DELETED_NAME: 'Deleted user',
 } as const;
 
 export const PROJECT_ERROR = {

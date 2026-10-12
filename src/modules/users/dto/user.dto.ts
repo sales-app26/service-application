@@ -154,3 +154,13 @@ export class ListUsersQueryDto extends PaginationQueryDto {
   @IsBoolean()
   manageableOnly?: boolean;
 }
+
+export class DeleteUserDto {
+  @ApiPropertyOptional({
+    description:
+      'Who takes over the person’s leads, in every project (joined to those projects if needed). Required when they own any.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  transferToId?: string;
+}

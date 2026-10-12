@@ -37,6 +37,10 @@ export class User {
   @Column({ name: 'created_by', type: PG_TYPE.UUID, nullable: true })
   createdBy: string | null;
 
+  /** Set when a Super Admin deleted the person: the row is anonymised, kept for history. */
+  @Column({ name: 'deleted_at', type: PG_TYPE.TIMESTAMPTZ, nullable: true })
+  deletedAt: Date | null;
+
   @CreateDateColumn({
     name: 'created_at',
     type: PG_TYPE.TIMESTAMPTZ,

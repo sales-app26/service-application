@@ -102,9 +102,13 @@ export class SupabaseAuthClient {
    * Sends the reset email through Brevo. An unknown email fails at the token step,
    * and the caller swallows it, so the answer never reveals which emails exist.
    */
-  async sendRecoveryEmail(email: string): Promise<void> {
+  async sendRecoveryEmail(email: string, name?: string): Promise<void> {
     const { hashedToken } = await this.generateLink('recovery', email);
-    await this.mail.sendAuthLink('recovery', { email }, this.linkFor('recovery', hashedToken));
+    await this.mail.sendAuthLink(
+      'recovery',
+      { email, name },
+      this.linkFor('recovery', hashedToken),
+    );
   }
 
   /**

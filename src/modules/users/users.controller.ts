@@ -27,6 +27,7 @@ import { UserRole } from '../../common/enums';
 import {
   ChangeEmailDto,
   ChangeRoleDto,
+  DeleteUserDto,
   CreateUserDto,
   ListUsersQueryDto,
   UpdateUserDto,
@@ -111,6 +112,23 @@ export class UsersController {
     return this.usersService.deactivate(actor, params.id);
   }
 
+  @Post(`${ROUTE.ID_PARAM}/delete`)
+  @Roles(UserRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(SUCCESS_MESSAGE.USER_DELETED)
+  @ApiOperation({
+    summary: 'Delete a user (Super Admin)',
+    description:
+      'Cannot be undone. Their leads move to `transferToId` (required if they own any) as approved transfers; their pending transfers are rejected and memberships end. Their login is removed and their name, email and phone erased; the visits and follow-ups they logged stay, shown as "Deleted user". The email can be used for a new account.',
+  })
+  remove(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+    @Body() dto: DeleteUserDto,
+  ): Promise<{ leadsMoved: number }> {
+    return this.usersService.remove(actor, params.id, dto.transferToId);
+  }
+
   @Post(`${ROUTE.ID_PARAM}/reset-link`)
   @HttpCode(HttpStatus.OK)
   @ResponseMessage(SUCCESS_MESSAGE.RESET_LINK_CREATED)
@@ -124,6 +142,21 @@ export class UsersController {
     @Param() params: UuidParamDto,
   ): Promise<{ link: string }> {
     return this.usersService.resetLink(actor, params.id);
+  }
+
+  @Post(`${ROUTE.ID_PARAM}/reset-email`)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(SUCCESS_MESSAGE.RESET_EMAIL_SENT)
+  @ApiOperation({
+    summary: 'Email the person a password-reset link',
+    description:
+      'For a person the caller manages. Sent through Brevo to their account email; any earlier reset link stops working. The user must be active.',
+  })
+  sendResetEmail(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+  ): Promise<{ email: string }> {
+    return this.usersService.sendResetEmail(actor, params.id);
   }
 
   @Post(`${ROUTE.ID_PARAM}/reactivate`)
