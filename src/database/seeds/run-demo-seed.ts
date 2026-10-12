@@ -12,8 +12,9 @@ import {
 } from '../../common/constants';
 import { EntryType, LeadStatus, ProjectStatus, ProjectType, UserRole } from '../../common/enums';
 import { addDays, formatIstStamp, istDateOf, istToday } from '../../common/utils';
-import { supabaseConfig, visitConfig } from '../../config/configuration';
+import { appConfig, mailConfig, supabaseConfig, visitConfig } from '../../config/configuration';
 import { ImageService } from '../../modules/media/image.service';
+import { MailService } from '../../modules/mail/mail.service';
 import { SupabaseAuthClient } from '../../modules/supabase/supabase-auth.client';
 import { SupabaseStorageClient } from '../../modules/supabase/supabase-storage.client';
 import { dataSource } from '../data-source';
@@ -36,9 +37,11 @@ const RESET = process.argv.includes('--reset');
 const namespaces: Record<string, unknown> = {
   [CONFIG_NAMESPACE.SUPABASE]: supabaseConfig(),
   [CONFIG_NAMESPACE.VISIT]: visitConfig(),
+  [CONFIG_NAMESPACE.APP]: appConfig(),
+  [CONFIG_NAMESPACE.MAIL]: mailConfig(),
 };
 const config = { getOrThrow: (key: string) => namespaces[key] } as unknown as ConfigService;
-const authClient = new SupabaseAuthClient(config);
+const authClient = new SupabaseAuthClient(config, new MailService(config));
 const storage = new SupabaseStorageClient(config);
 const images = new ImageService();
 

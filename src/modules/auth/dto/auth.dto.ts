@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
 import { ProjectStatus, ProjectType, TargetPeriod, UserRole } from '../../../common/enums';
@@ -41,9 +50,28 @@ export class SetPasswordDto {
     description:
       'The access token from the invite or reset link (Supabase puts it in the URL fragment after the redirect).',
   })
+  @ValidateIf((dto: SetPasswordDto) => !dto.tokenHash)
   @IsString()
   @IsNotEmpty()
-  accessToken: string;
+  accessToken?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Instead of `accessToken`: the one-time `token_hash` from a link the API emailed itself (Brevo).',
+  })
+  @ValidateIf((dto: SetPasswordDto) => !dto.accessToken)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  tokenHash?: string;
+
+  @ApiPropertyOptional({
+    enum: ['invite', 'recovery'],
+    description: 'With `tokenHash`: the link type.',
+  })
+  @ValidateIf((dto: SetPasswordDto) => !!dto.tokenHash)
+  @IsIn(['invite', 'recovery'])
+  type?: 'invite' | 'recovery';
 
   @ApiProperty({ minLength: BUSINESS_RULE.PASSWORD_MIN_LENGTH })
   @IsString()

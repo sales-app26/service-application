@@ -19,6 +19,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { MediaModule } from './modules/media/media.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { MailModule } from './modules/mail/mail.module';
 import { SupabaseModule } from './modules/supabase/supabase.module';
 import { TransferRejectionsModule } from './modules/transfers/transfer-rejections.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
@@ -64,6 +65,7 @@ const MILLISECONDS_PER_SECOND = 1_000;
 
     // Cross-cutting, @Global: Supabase Auth/Storage, project scope, and the
     // transfer auto-reject that users, projects and leads all trigger.
+    MailModule,
     SupabaseModule,
     AccessModule,
     TransferRejectionsModule,

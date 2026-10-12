@@ -160,6 +160,23 @@ export const supabaseConfig = registerAs(CONFIG_NAMESPACE.SUPABASE, (): Supabase
 }));
 
 // ---------------------------------------------------------------------------
+// Mail
+// ---------------------------------------------------------------------------
+
+export interface MailConfig {
+  /** Brevo transactional API key. Blank: Supabase sends the auth emails itself. */
+  brevoApiKey: string;
+  fromEmail: string;
+  fromName: string;
+}
+
+export const mailConfig = registerAs(CONFIG_NAMESPACE.MAIL, (): MailConfig => ({
+  brevoApiKey: process.env[ENV.BREVO_API_KEY] ?? '',
+  fromEmail: process.env[ENV.MAIL_FROM_EMAIL] ?? '',
+  fromName: process.env[ENV.MAIL_FROM_NAME] ?? 'Pronttera Sales',
+}));
+
+// ---------------------------------------------------------------------------
 // Visit proof
 // ---------------------------------------------------------------------------
 
@@ -202,4 +219,5 @@ export const configurations = [
   supabaseConfig,
   visitConfig,
   swaggerConfig,
+  mailConfig,
 ];

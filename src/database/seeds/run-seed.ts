@@ -2,7 +2,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { BUSINESS_RULE, CONFIG_NAMESPACE, ENV } from '../../common/constants';
 import { UserRole } from '../../common/enums';
-import { supabaseConfig, visitConfig } from '../../config/configuration';
+import { appConfig, mailConfig, supabaseConfig, visitConfig } from '../../config/configuration';
+import { MailService } from '../../modules/mail/mail.service';
 import {
   SupabaseAuthClient,
   SupabaseCallError,
@@ -42,9 +43,11 @@ async function run(): Promise<void> {
     const namespaces: Record<string, unknown> = {
       [CONFIG_NAMESPACE.SUPABASE]: supabaseConfig(),
       [CONFIG_NAMESPACE.VISIT]: visitConfig(),
+      [CONFIG_NAMESPACE.APP]: appConfig(),
+      [CONFIG_NAMESPACE.MAIL]: mailConfig(),
     };
     const config = { getOrThrow: (key: string) => namespaces[key] } as unknown as ConfigService;
-    const authClient = new SupabaseAuthClient(config);
+    const authClient = new SupabaseAuthClient(config, new MailService(config));
 
     let authUserId: string;
     try {

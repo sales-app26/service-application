@@ -94,8 +94,13 @@ export class AuthService {
   /** Completes an invite or a reset link: the link's token sets the password. */
   async setPassword(dto: SetPasswordDto): Promise<void> {
     try {
-      await this.tokenVerifier.verify(dto.accessToken);
-      await this.authClient.setPasswordWithToken(dto.accessToken, dto.password);
+      // Our own (Brevo) links carry a one-time token; Supabase's carry a session token.
+      const accessToken = dto.tokenHash
+        ? (await this.authClient.verifyTokenHash(dto.tokenHash, dto.type ?? 'recovery'))
+            .access_token
+        : dto.accessToken!;
+      await this.tokenVerifier.verify(accessToken);
+      await this.authClient.setPasswordWithToken(accessToken, dto.password);
     } catch (error) {
       if (error instanceof SupabaseCallError && error.failure !== SupabaseFailure.REJECTED) {
         throw SupabaseAuthClient.toBusinessException(error);

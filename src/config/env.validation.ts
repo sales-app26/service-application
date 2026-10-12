@@ -68,6 +68,16 @@ export const envValidationSchema = Joi.object({
   [ENV.SUPABASE_TIMEOUT_MS]: Joi.number().integer().min(1000).default(10_000),
   [ENV.AUTH_REDIRECT_URL]: Joi.string().uri().allow('').default(''),
 
+  // ----------------------------------------------------------------------- mail
+  // Blank: Supabase sends the invite and reset emails itself.
+  [ENV.BREVO_API_KEY]: Joi.string().allow('').default(''),
+  [ENV.MAIL_FROM_EMAIL]: Joi.when(ENV.BREVO_API_KEY, {
+    is: Joi.string().min(1),
+    then: Joi.string().email().required(),
+    otherwise: Joi.string().email().allow('').default(''),
+  }),
+  [ENV.MAIL_FROM_NAME]: Joi.string().default('Pronttera Sales'),
+
   // ---------------------------------------------------------------- visit proof
   [ENV.CAPTURE_TOKEN_SECRET]: Joi.string().min(MIN_SECRET_LENGTH).required(),
   [ENV.SIGNED_URL_TTL_SECONDS]: Joi.number().integer().min(30).max(3600).default(600),

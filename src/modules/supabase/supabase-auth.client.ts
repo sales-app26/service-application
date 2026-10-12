@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { AUTH_ERROR, CONFIG_NAMESPACE, ERROR_CODE } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
-import { SupabaseConfig } from '../../config/configuration';
+import { AppConfig, SupabaseConfig } from '../../config/configuration';
+import { AuthMailKind, MailService } from '../mail/mail.service';
 
 /** The session Supabase returns from the token endpoints. */
 export interface SupabaseSession {
@@ -68,8 +69,14 @@ export class SupabaseAuthClient {
   private readonly logger = new Logger(SupabaseAuthClient.name);
   private readonly config: SupabaseConfig;
 
-  constructor(configService: ConfigService) {
+  private readonly appUrl: string;
+
+  constructor(
+    configService: ConfigService,
+    private readonly mail: MailService,
+  ) {
     this.config = configService.getOrThrow<SupabaseConfig>(CONFIG_NAMESPACE.SUPABASE);
+    this.appUrl = configService.getOrThrow<AppConfig>(CONFIG_NAMESPACE.APP).appUrl;
   }
 
   // ---------------------------------------------------------------- as the user
@@ -88,11 +95,27 @@ export class SupabaseAuthClient {
     });
   }
 
-  /** Sends the reset email. Supabase answers 200 for unknown emails too. */
+  /**
+   * Sends the reset email. Supabase answers 200 for unknown emails too; with Brevo,
+   * an unknown email fails here and the caller swallows it the same way.
+   */
   async sendRecoveryEmail(email: string): Promise<void> {
+    if (this.mail.enabled) {
+      const { hashedToken } = await this.generateLink('recovery', email);
+      await this.mail.sendAuthLink('recovery', { email }, this.linkFor('recovery', hashedToken));
+      return;
+    }
     await this.call('POST', `/recover${this.redirectQuery()}`, {
       key: this.config.anonKey,
       body: { email },
+    });
+  }
+
+  /** Trades the one-time token from our own email link for a session (single use). */
+  verifyTokenHash(tokenHash: string, type: AuthMailKind): Promise<SupabaseSession> {
+    return this.call<SupabaseSession>('POST', '/verify', {
+      key: this.config.anonKey,
+      body: { type, token_hash: tokenHash },
     });
   }
 
@@ -119,7 +142,22 @@ export class SupabaseAuthClient {
    * Creates the login and emails a link to set the password (PRD §5.2).
    * The returned id becomes `users.id`.
    */
-  inviteUser(email: string, name: string): Promise<SupabaseAuthUser> {
+  async inviteUser(email: string, name: string): Promise<SupabaseAuthUser> {
+    if (this.mail.enabled) {
+      const { user, hashedToken } = await this.generateLink('invite', email, { name });
+      try {
+        await this.mail.sendAuthLink(
+          'invite',
+          { email, name },
+          this.linkFor('invite', hashedToken),
+        );
+      } catch (error) {
+        // No email went out, so don't leave a login nobody can reach; the admin can retry.
+        await this.deleteUserAsAdmin(user.id);
+        throw error;
+      }
+      return user;
+    }
     return this.call<SupabaseAuthUser>('POST', `/invite${this.redirectQuery()}`, {
       key: this.config.serviceRoleKey,
       bearer: this.config.serviceRoleKey,
@@ -169,6 +207,8 @@ export class SupabaseAuthClient {
    * password is wrong".
    */
   static toBusinessException(error: unknown): BusinessException {
+    // Already worded for the user (e.g. the email could not be sent).
+    if (error instanceof BusinessException) return error;
     if (error instanceof SupabaseCallError && error.failure === SupabaseFailure.RATE_LIMITED) {
       return new BusinessException(
         'Too many attempts. Please wait a minute and try again.',
@@ -181,6 +221,40 @@ export class SupabaseAuthClient {
       undefined,
       HttpStatus.SERVICE_UNAVAILABLE,
     );
+  }
+
+  /**
+   * Creates the one-time token without Supabase sending anything (Brevo sends it).
+   * `invite` also creates the login. GoTrue returns the user's fields with
+   * `hashed_token` alongside; newer versions nest them under `user` / `properties`.
+   */
+  private async generateLink(
+    type: AuthMailKind,
+    email: string,
+    data?: Record<string, string>,
+  ): Promise<{ user: SupabaseAuthUser; hashedToken: string }> {
+    const res = await this.call<
+      SupabaseAuthUser & {
+        hashed_token?: string;
+        user?: SupabaseAuthUser;
+        properties?: { hashed_token?: string };
+      }
+    >('POST', '/admin/generate_link', {
+      key: this.config.serviceRoleKey,
+      bearer: this.config.serviceRoleKey,
+      body: { type, email, ...(data ? { data } : {}) },
+    });
+    const hashedToken = res.properties?.hashed_token ?? res.hashed_token;
+    const user = res.user ?? { id: res.id, email: res.email };
+    if (!hashedToken || !user.id) {
+      throw new SupabaseCallError(SupabaseFailure.UNAVAILABLE, 200, 'generate_link: no token');
+    }
+    return { user, hashedToken };
+  }
+
+  private linkFor(type: AuthMailKind, hashedToken: string): string {
+    const query = new URLSearchParams({ token_hash: hashedToken, type });
+    return `${this.appUrl}/set-password?${query.toString()}`;
   }
 
   private redirectQuery(): string {
