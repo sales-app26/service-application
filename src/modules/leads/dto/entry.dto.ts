@@ -1,7 +1,8 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, IntersectionType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -16,7 +17,7 @@ import {
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
 import { PaginationQueryDto } from '../../../common/dto';
-import { EntryType, LeadStatus } from '../../../common/enums';
+import { EntryType, LeadStatus, LostReason } from '../../../common/enums';
 import { emptyToUndefined, toNumber, trimString, trimToNull } from '../../../common/utils';
 import { IsIsoDate } from '../../../common/validators/is-iso-date.validator';
 import { LocationRefDto } from '../../locations/dto/location.dto';
@@ -48,6 +49,13 @@ export class EntryDto {
 
   @ApiPropertyOptional({ nullable: true, type: String })
   note: string | null;
+
+  @ApiPropertyOptional({
+    enum: LostReason,
+    nullable: true,
+    description: 'Why the lead was turned down. Only on Not interested and Lost.',
+  })
+  reason: LostReason | null;
 
   @ApiPropertyOptional({ nullable: true, type: String, example: SWAGGER_EXAMPLE.DATE })
   nextFollowUpDate: string | null;
@@ -132,7 +140,49 @@ export class VisitProofFieldsDto {
   captureToken?: string;
 }
 
-export class LogFollowUpDto extends VisitProofFieldsDto {
+/**
+ * What an entry says about the outcome, beyond the status: why a lead was
+ * turned down, or the deal it was converted on. Multipart sends strings, so
+ * the deal value is converted explicitly.
+ */
+export class EntryOutcomeFieldsDto {
+  @ApiPropertyOptional({
+    enum: LostReason,
+    description: 'Only with Not interested or Lost; anything else is refused.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(LostReason)
+  reason?: LostReason;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: BUSINESS_RULE.DEAL_VALUE_MAX,
+    example: 1499,
+    description:
+      'Rupees per month, written to the lead. On a follow-up or status change, only with Converted.',
+  })
+  @IsOptional()
+  @Transform(toNumber)
+  @IsInt()
+  @Min(0)
+  @Max(BUSINESS_RULE.DEAL_VALUE_MAX)
+  dealValue?: number;
+
+  @ApiPropertyOptional({
+    maxLength: BUSINESS_RULE.PLAN_MAX_LENGTH,
+    example: 'Annual Gold',
+    description: 'The plan sold, written to the lead. Same rule as `dealValue`.',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(BUSINESS_RULE.PLAN_MAX_LENGTH)
+  plan?: string | null;
+}
+
+export class LogFollowUpDto extends IntersectionType(VisitProofFieldsDto, EntryOutcomeFieldsDto) {
   @ApiProperty({
     format: 'uuid',
     description:
@@ -173,7 +223,7 @@ export class LogFollowUpDto extends VisitProofFieldsDto {
   location: string;
 }
 
-export class ChangeStatusDto {
+export class ChangeStatusDto extends EntryOutcomeFieldsDto {
   @ApiProperty({ format: 'uuid', description: 'One-time id; a retry returns the first save.' })
   @IsUUID('4')
   clientRequestId: string;

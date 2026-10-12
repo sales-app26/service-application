@@ -41,7 +41,7 @@ export class TimelineService {
     }
 
     const person = await this.users.findOne({ where: { id: userId } });
-    if (!person) {
+    if (!person || !(await this.scope.canSeePerson(actor, userId))) {
       throw new NotFoundBusinessException(USER_ERROR.NOT_FOUND);
     }
 

@@ -2,6 +2,7 @@ import { InitSalesSchema1791446400000 } from './1791446400000-InitSalesSchema';
 import { AppVersions1791532800000 } from './1791532800000-AppVersions';
 import { UserDeletion1791619200000 } from './1791619200000-UserDeletion';
 import { SingleUseCapture1791705600000 } from './1791705600000-SingleUseCapture';
+import { SalesInsights1791792000000 } from './1791792000000-SalesInsights';
 
 /** Every migration, in the order they apply. */
 export const MIGRATIONS = [
@@ -9,4 +10,5 @@ export const MIGRATIONS = [
   AppVersions1791532800000,
   UserDeletion1791619200000,
   SingleUseCapture1791705600000,
+  SalesInsights1791792000000,
 ];

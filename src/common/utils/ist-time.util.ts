@@ -63,12 +63,16 @@ export const addDays = (date: string, days: number): string =>
 export const daysBetween = (from: string, to: string): number =>
   Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
 
+/** The Monday on or before an IST calendar date — the first day of its week. */
+export const istMondayOf = (date: string): string => {
+  // 0 = Sunday … 6 = Saturday, read from the IST date itself.
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return addDays(date, -((weekday + 6) % 7));
+};
+
 /** The Monday–Sunday IST week containing `at` (BRD §7). */
 export const istWeekRange = (at: Date = new Date()): InstantRange => {
-  const today = istDateOf(at);
-  // 0 = Sunday … 6 = Saturday, read from the IST date itself.
-  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
-  const monday = addDays(today, -((weekday + 6) % 7));
+  const monday = istMondayOf(istDateOf(at));
   return istDateSpan(monday, addDays(monday, 6));
 };
 
@@ -108,3 +112,10 @@ export const formatIstDateTime = (at: Date | null): string => {
   const shifted = new Date(at.getTime() + IST_OFFSET_MS).toISOString();
   return `${shifted.slice(0, 10)} ${shifted.slice(11, 16)}`;
 };
+
+/**
+ * SQL for the India calendar date of a timestamptz column, `YYYY-MM-DD`,
+ * whatever time zone the database session uses — for grouping counts by day.
+ */
+export const istDateSql = (column: string): string =>
+  `to_char((${column} AT TIME ZONE 'UTC') + interval '5 hours 30 minutes', 'YYYY-MM-DD')`;

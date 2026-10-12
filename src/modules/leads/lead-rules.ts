@@ -2,9 +2,10 @@ import {
   BUSINESS_RULE,
   ERROR_CODE,
   FOLLOW_UP_ERROR,
+  REASON_STATUSES,
   TERMINAL_STATUSES,
 } from '../../common/constants';
-import { LeadStatus } from '../../common/enums';
+import { LeadStatus, LostReason } from '../../common/enums';
 import {
   BusinessException,
   ForbiddenBusinessException,
@@ -18,6 +19,14 @@ import { daysBetween } from '../../common/utils';
  */
 
 export const isTerminal = (status: LeadStatus): boolean => TERMINAL_STATUSES.includes(status);
+
+/**
+ * An open lead whose last activity is before this instant is "cold": nobody
+ * has logged anything on it for `COLD_LEAD_DAYS` (counted in hours, not
+ * calendar days, so a lead goes cold at the same time of day it was touched).
+ */
+export const coldSince = (now: Date): Date =>
+  new Date(now.getTime() - BUSINESS_RULE.COLD_LEAD_DAYS * 24 * 60 * 60 * 1000);
 
 /**
  * The next follow-up date an entry will carry.
@@ -118,4 +127,49 @@ export const conversionAfter = (
     return { convertedAt: lead.convertedAt, convertedBy: lead.convertedBy };
   }
   return { convertedAt: at, convertedBy: lead.ownerId };
+};
+
+/**
+ * The reason an entry carries. Only Not interested and Lost are explained; a
+ * reason sent with any other status is a client mistake, refused rather than
+ * silently dropped.
+ */
+export const resolveReason = (
+  status: LeadStatus,
+  reason: LostReason | null | undefined,
+): LostReason | null => {
+  if (reason === undefined || reason === null) {
+    return null;
+  }
+  if (!REASON_STATUSES.includes(status)) {
+    throw new BusinessException(FOLLOW_UP_ERROR.REASON_NOT_ALLOWED, ERROR_CODE.VALIDATION_FAILED);
+  }
+  return reason;
+};
+
+export interface DealFields {
+  dealValue?: number | null;
+  plan?: string | null;
+}
+
+/**
+ * What a follow-up or status change writes to the lead's deal value and plan:
+ * only a Converted entry records the price agreed. A field not sent leaves the
+ * lead's value as it is, so a later after-sale visit does not wipe it.
+ */
+export const dealChangesAfter = (
+  status: LeadStatus,
+  deal: DealFields,
+): { dealValue?: number; plan?: string } => {
+  const changes: { dealValue?: number; plan?: string } = {};
+  if (deal.dealValue !== undefined && deal.dealValue !== null) changes.dealValue = deal.dealValue;
+  if (deal.plan !== undefined && deal.plan !== null) changes.plan = deal.plan;
+
+  if (Object.keys(changes).length > 0 && status !== LeadStatus.CONVERTED) {
+    throw new BusinessException(
+      FOLLOW_UP_ERROR.DEAL_ONLY_WHEN_CONVERTED,
+      ERROR_CODE.VALIDATION_FAILED,
+    );
+  }
+  return changes;
 };

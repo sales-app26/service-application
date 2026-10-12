@@ -68,6 +68,8 @@ export const USER_ERROR = {
   MODERATOR_CREATES_SALES_ONLY: 'Moderators can only create sales persons.',
   CANNOT_CREATE_SUPER_ADMIN: 'Super Admins cannot be created from the app.',
   NOT_MANAGEABLE: 'You can only manage sales persons you created or share a project with.',
+  ACCOUNT_OUTSIDE_SCOPE:
+    "This person also works in a project you don't manage, so only the Super Admin can do this.",
   LAST_SUPER_ADMIN: 'You are the only active Super Admin, so this account cannot be deactivated.',
   LAST_SUPER_ADMIN_ROLE: 'The only active Super Admin cannot change role.',
   ALREADY_ACTIVE: 'This user is already active.',
@@ -160,6 +162,8 @@ export const FOLLOW_UP_ERROR = {
   NEXT_DATE_NOT_OWNER: 'The next follow-up date can be changed only while you own the lead.',
   CLIENT_REQUEST_REUSED: 'This request id was already used for a different entry.',
   NOTHING_TO_UPDATE: 'Send a note or a next follow-up date to change.',
+  REASON_NOT_ALLOWED: 'A reason can be given only for Not interested or Lost.',
+  DEAL_ONLY_WHEN_CONVERTED: 'Deal value and plan can be sent only when the lead is Converted.',
 } as const;
 
 export const VISIT_ERROR = {
@@ -190,6 +194,9 @@ export const TRANSFER_ERROR = {
 
 export const REPORT_ERROR = {
   EXPORT_RANGE_TOO_LONG: `An export can cover at most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days.`,
+  EXPORT_TOO_MANY_ROWS:
+    'An export can hold at most 20,000 rows. Choose fewer days, one project or one person.',
+  DASHBOARD_RANGE_TOO_LONG: `The dashboard can cover at most ${BUSINESS_RULE.DASHBOARD_MAX_DAYS} days.`,
   DATE_REQUIRED: 'Choose a start and end date.',
 } as const;
 

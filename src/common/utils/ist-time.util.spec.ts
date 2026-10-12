@@ -6,6 +6,8 @@ import {
   isSameIstDay,
   isValidIsoDate,
   istDateOf,
+  istDateSql,
+  istMondayOf,
   istDateSpan,
   istDayRange,
   istMonthRange,
@@ -79,6 +81,19 @@ describe('date helpers', () => {
     expect(isValidIsoDate('2026-02-28')).toBe(true);
     expect(isValidIsoDate('2026-02-29')).toBe(false);
     expect(isValidIsoDate('2026-10-08T00:00:00Z')).toBe(false);
+  });
+
+  it('finds the Monday a date’s week starts on', () => {
+    expect(istMondayOf('2026-10-05')).toBe('2026-10-05'); // Monday
+    expect(istMondayOf('2026-10-08')).toBe('2026-10-05'); // Thursday
+    expect(istMondayOf('2026-10-11')).toBe('2026-10-05'); // Sunday
+    expect(istMondayOf('2026-11-01')).toBe('2026-10-26'); // across a month end
+  });
+
+  it('groups a timestamptz column by India date in SQL', () => {
+    expect(istDateSql('f.created_at')).toBe(
+      "to_char((f.created_at AT TIME ZONE 'UTC') + interval '5 hours 30 minutes', 'YYYY-MM-DD')",
+    );
   });
 
   it('does day arithmetic across month ends', () => {

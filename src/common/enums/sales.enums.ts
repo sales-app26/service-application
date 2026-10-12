@@ -62,3 +62,65 @@ export enum LeadOwnerTag {
   OWNER_INACTIVE = 'owner_inactive',
   OWNER_REMOVED = 'owner_removed',
 }
+
+/** leads.source — how the lead was found (`05_sales_insights.sql`). */
+export enum LeadSource {
+  WALK_IN = 'walk_in',
+  REFERRAL = 'referral',
+  PHONE = 'phone',
+  WHATSAPP = 'whatsapp',
+  SOCIAL = 'social',
+  EVENT = 'event',
+  /** Set by the CSV import, never by hand. */
+  IMPORT = 'import',
+  OTHER = 'other',
+}
+
+/** follow_ups.reason — why a lead was marked Not interested or Lost. */
+export enum LostReason {
+  PRICE = 'price',
+  HAS_ALTERNATIVE = 'has_alternative',
+  NOT_READY = 'not_ready',
+  NO_NEED = 'no_need',
+  OWNER_UNAVAILABLE = 'owner_unavailable',
+  SHOP_CLOSED = 'shop_closed',
+  COMPETITOR = 'competitor',
+  OTHER = 'other',
+}
+
+/**
+ * The lead list's `due` filter, on the next follow-up date in India time.
+ * Derived, never stored.
+ */
+export enum LeadDue {
+  /** Before today. */
+  OVERDUE = 'overdue',
+  TODAY = 'today',
+  TOMORROW = 'tomorrow',
+  /** Tomorrow to seven days ahead. */
+  WEEK = 'week',
+  /** Still open, but no next date at all. */
+  NONE = 'none',
+}
+
+/** A dashboard funnel stage, reached by a lead's current status. */
+export enum FunnelStage {
+  CREATED = 'created',
+  CONTACTED = 'contacted',
+  INTERESTED = 'interested',
+  CONVERTED = 'converted',
+}
+
+/** Why the dashboard flags someone or something for an admin's attention. */
+export enum AttentionKind {
+  BEHIND_TARGET = 'behind_target',
+  OVERDUE_PILE = 'overdue_pile',
+  IDLE = 'idle',
+  STALE_TRANSFER = 'stale_transfer',
+}
+
+/** How the dashboard trend is bucketed: by India day, or by Monday–Sunday week for long ranges. */
+export enum TrendBucket {
+  DAY = 'day',
+  WEEK = 'week',
+}

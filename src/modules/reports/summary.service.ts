@@ -16,14 +16,10 @@ import {
   ForbiddenBusinessException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
-import { addDays, daysBetween } from '../../common/utils';
+import { addDays, daysBetween, istDateSql } from '../../common/utils';
 import { User } from '../../database/entities';
 import { DaySummaryDto, SummaryDto, SummaryQueryDto } from './dto/report.dto';
 import { ReportScopeService } from './report-scope.service';
-
-/** The India calendar date of a timestamptz column, whatever time zone the session uses. */
-const IST_DAY = (column: string): string =>
-  `to_char((${column} AT TIME ZONE 'UTC') + interval '5 hours 30 minutes', 'YYYY-MM-DD')`;
 
 type Counts = Partial<
   Pick<DaySummaryDto, 'followUps' | 'visits' | 'statusChanges' | 'newLeads' | 'conversions'>
@@ -33,9 +29,10 @@ type Counts = Partial<
  * One person over a week, a month or any range (admin request after the v1 PRD):
  * what the daily timeline shows, counted per day so a range reads at a glance.
  *
- * It uses the same definitions as the dashboard — a lead is "added" by whoever
- * logged its first entry, a conversion is credited to `converted_by` — so the
- * totals here match the dashboard for the same person and dates.
+ * It uses the same definitions as the dashboard — a lead is "added" by its
+ * `created_by` (whoever added it in the app, or the admin who imported it), a
+ * conversion is credited to `converted_by` — so the totals here match the
+ * dashboard for the same person and dates.
  */
 @Injectable()
 export class SummaryService {
@@ -62,7 +59,9 @@ export class SummaryService {
       throw new ForbiddenBusinessException(COMMON_ERROR.FORBIDDEN);
     }
     const person = await this.users.findOne({ where: { id: userId } });
-    if (!person) throw new NotFoundBusinessException(USER_ERROR.NOT_FOUND);
+    if (!person || !(await this.scope.canSeePerson(actor, userId))) {
+      throw new NotFoundBusinessException(USER_ERROR.NOT_FOUND);
+    }
 
     const projectIds = await this.scope.projectScope(actor, query.projectId);
     const byDay = new Map<string, Counts>();
@@ -121,7 +120,7 @@ export class SummaryService {
 
   private entriesByDay(userId: string, scope: string[] | null, start: Date, end: Date) {
     return this.dataSource.query(
-      `SELECT ${IST_DAY('f.created_at')} AS day,
+      `SELECT ${istDateSql('f.created_at')} AS day,
               count(*) FILTER (WHERE f.entry_type = $5)::int AS follow_ups,
               count(*) FILTER (WHERE f.entry_type = $5 AND f.photo_path IS NOT NULL)::int AS visits,
               count(*) FILTER (WHERE f.entry_type <> $5)::int AS status_changes
@@ -138,19 +137,13 @@ export class SummaryService {
     >;
   }
 
-  /** Leads whose first entry was this person's, by the day the lead was added. */
+  /** Leads this person added or imported, by the day the lead was added. */
   private leadsAddedByDay(userId: string, scope: string[] | null, start: Date, end: Date) {
     return this.dataSource.query(
-      `SELECT ${IST_DAY('l.created_at')} AS day, count(*)::int AS count
+      `SELECT ${istDateSql('l.created_at')} AS day, count(*)::int AS count
          FROM ${SQL_TABLE.LEADS} l
-         CROSS JOIN LATERAL (
-           SELECT f.user_id FROM ${SQL_TABLE.FOLLOW_UPS} f
-            WHERE f.lead_id = l.id
-            ORDER BY f.created_at, f.id
-            LIMIT 1
-         ) creator
         WHERE l.deleted_at IS NULL
-          AND creator.user_id = $1
+          AND l.created_by = $1
           AND l.created_at >= $2 AND l.created_at < $3
           AND ($4::uuid[] IS NULL OR l.project_id = ANY($4::uuid[]))
         GROUP BY 1`,
@@ -160,7 +153,7 @@ export class SummaryService {
 
   private conversionsByDay(userId: string, scope: string[] | null, start: Date, end: Date) {
     return this.dataSource.query(
-      `SELECT ${IST_DAY('l.converted_at')} AS day, count(*)::int AS count
+      `SELECT ${istDateSql('l.converted_at')} AS day, count(*)::int AS count
          FROM ${SQL_TABLE.LEADS} l
         WHERE l.deleted_at IS NULL
           AND l.converted_by = $1

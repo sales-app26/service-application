@@ -53,7 +53,15 @@ export class UserDto {
   @ApiProperty()
   canManage: boolean;
 
-  static from(user: User, canManage: boolean): UserDto {
+  /**
+   * Whether the caller may take account-wide actions: a shareable reset link,
+   * deactivate, reactivate. A moderator may only for people who work in none of
+   * the projects he isn't in; those actions reach every project the person is in.
+   */
+  @ApiProperty()
+  canManageAccount: boolean;
+
+  static from(user: User, canManage: boolean, canManageAccount = canManage): UserDto {
     return {
       id: user.id,
       name: user.name,
@@ -64,6 +72,7 @@ export class UserDto {
       createdBy: user.createdBy,
       createdAt: user.createdAt,
       canManage,
+      canManageAccount: canManage && canManageAccount,
     };
   }
 }

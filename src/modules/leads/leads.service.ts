@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, In, IsNull, Repository } from 'typeorm';
+import { Brackets, DataSource, In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 
 import {
   AUTO_REJECT_REASON,
@@ -11,17 +11,28 @@ import {
   ERROR_CODE,
   LEAD_ERROR,
   PROJECT_ERROR,
+  SORT_ORDER,
+  SortDirection,
   SQL_TABLE,
+  TERMINAL_STATUSES,
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/dto';
-import { EntryType, LeadStatus, ProjectStatus, TransferStatus, UserRole } from '../../common/enums';
+import {
+  EntryType,
+  LeadDue,
+  LeadStatus,
+  ProjectStatus,
+  TransferStatus,
+  UserRole,
+} from '../../common/enums';
 import {
   BusinessException,
   ForbiddenBusinessException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
 import {
+  addDays,
   escapeLike,
   isUniqueViolation,
   istToday,
@@ -39,25 +50,29 @@ import {
   LeadDetailDto,
   LeadPermissionsDto,
   LeadSummaryDto,
+  LeadSort,
   LeadTransferRefDto,
   ListLeadsQueryDto,
   UpdateLeadDto,
 } from './dto/lead.dto';
 import { EntryPresenter } from './entry.presenter';
 import { LeadAccessService, LeadVisibility } from './lead-access.service';
-import { resolveNextFollowUpDate } from './lead-rules';
+import { coldSince, resolveNextFollowUpDate, resolveReason } from './lead-rules';
 import { LeadPresenter } from './lead.presenter';
 
 interface UploadedPhoto {
   buffer: Buffer;
 }
 
-const SORT_COLUMN = {
-  updated: 'l.updatedAt',
-  created: 'l.createdAt',
-  name: 'l.name',
-  next_follow_up: 'l.nextFollowUpDate',
-} as const;
+const SORT: Record<LeadSort, { column: string; direction: SortDirection }> = {
+  updated: { column: 'l.updatedAt', direction: SORT_ORDER.DESC },
+  created: { column: 'l.createdAt', direction: SORT_ORDER.DESC },
+  name: { column: 'l.name', direction: SORT_ORDER.ASC },
+  next_follow_up: { column: 'l.nextFollowUpDate', direction: SORT_ORDER.ASC },
+  value: { column: 'l.dealValue', direction: SORT_ORDER.DESC },
+  // Longest untouched first.
+  activity: { column: 'l.lastActivityAt', direction: SORT_ORDER.ASC },
+};
 
 /**
  * Leads (PRD §5.5): one client in one project, one owner, unique by phone
@@ -119,6 +134,7 @@ export class LeadsService {
       dto.nextFollowUpDate,
       istToday(now),
     );
+    const reason = resolveReason(dto.status, dto.reason);
     const needsProof = this.visitProof.requiresProof(project.type);
     const proofInput = { ...dto, photo };
     if (needsProof) {
@@ -166,6 +182,11 @@ export class LeadsService {
           nextFollowUpDate,
           convertedAt: converted ? now : null,
           convertedBy: converted ? actor.id : null,
+          dealValue: dto.dealValue ?? null,
+          plan: dto.plan ?? null,
+          source: dto.source ?? null,
+          createdBy: actor.id,
+          lastActivityAt: now,
         });
 
         await manager.insert(FollowUp, {
@@ -176,6 +197,7 @@ export class LeadsService {
           entryType: EntryType.FOLLOW_UP,
           status: dto.status,
           note: dto.note,
+          reason,
           nextFollowUpDate,
           locationId: location.id,
           photoPath: proof?.photoPath ?? null,
@@ -250,6 +272,21 @@ export class LeadsService {
       qb.andWhere('l.status = :status', { status: query.status });
     }
 
+    if (query.source) {
+      qb.andWhere('l.source = :source', { source: query.source });
+    }
+
+    if (query.due) {
+      this.whereDue(qb, query.due, istToday());
+    }
+
+    if (query.cold) {
+      qb.andWhere('l.status NOT IN (:...terminal)', { terminal: TERMINAL_STATUSES }).andWhere(
+        'l.last_activity_at < :coldBefore',
+        { coldBefore: coldSince(new Date()) },
+      );
+    }
+
     if (query.search) {
       const term = `%${escapeLike(query.search.toLowerCase())}%`;
       const digits = phoneSearchDigits(query.search);
@@ -265,12 +302,8 @@ export class LeadsService {
       );
     }
 
-    const sort = query.sort ?? 'updated';
-    qb.orderBy(
-      SORT_COLUMN[sort],
-      sort === 'name' || sort === 'next_follow_up' ? 'ASC' : 'DESC',
-      'NULLS LAST',
-    )
+    const sort = SORT[query.sort ?? 'updated'];
+    qb.orderBy(sort.column, sort.direction, 'NULLS LAST')
       .addOrderBy('l.id', 'ASC')
       .skip(query.skip)
       .take(query.limit);
@@ -364,8 +397,9 @@ export class LeadsService {
   // ------------------------------------------------------------------- update
 
   /**
-   * The owner edits name, business name, phone, notes and location at any
-   * time (Assumption 5). A new phone is checked for duplicates again.
+   * The owner edits name, business name, phone, notes, location, deal value,
+   * plan and source at any time (Assumption 5). A new phone is checked for
+   * duplicates again.
    */
   async update(
     actor: AuthenticatedUser,
@@ -399,6 +433,9 @@ export class LeadsService {
         if (dto.name !== undefined) changes.name = dto.name;
         if (dto.businessName !== undefined) changes.businessName = dto.businessName;
         if (dto.notes !== undefined) changes.notes = dto.notes;
+        if (dto.dealValue !== undefined) changes.dealValue = dto.dealValue;
+        if (dto.plan !== undefined) changes.plan = dto.plan;
+        if (dto.source !== undefined) changes.source = dto.source;
         if (phone !== undefined) changes.phone = phone;
         if (locationName !== undefined) {
           changes.locationId = (
@@ -440,6 +477,36 @@ export class LeadsService {
   }
 
   // ------------------------------------------------------------------ helpers
+
+  /**
+   * The `due` filter on the next follow-up date, India time. A closed lead
+   * never has a date, so only `none` has to leave closed leads out itself.
+   */
+  private whereDue(qb: SelectQueryBuilder<Lead>, due: LeadDue, today: string): void {
+    const tomorrow = addDays(today, 1);
+    switch (due) {
+      case LeadDue.OVERDUE:
+        qb.andWhere('l.next_follow_up_date < :today', { today });
+        break;
+      case LeadDue.TODAY:
+        qb.andWhere('l.next_follow_up_date = :today', { today });
+        break;
+      case LeadDue.TOMORROW:
+        qb.andWhere('l.next_follow_up_date = :tomorrow', { tomorrow });
+        break;
+      case LeadDue.WEEK:
+        qb.andWhere('l.next_follow_up_date BETWEEN :tomorrow AND :weekEnd', {
+          tomorrow,
+          weekEnd: addDays(today, 7),
+        });
+        break;
+      case LeadDue.NONE:
+        qb.andWhere('l.next_follow_up_date IS NULL').andWhere('l.status NOT IN (:...terminal)', {
+          terminal: TERMINAL_STATUSES,
+        });
+        break;
+    }
+  }
 
   private normalisePhone(raw: string): string {
     const phone = normaliseIndianMobile(raw);

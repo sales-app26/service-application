@@ -1,14 +1,19 @@
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { IsOptional, IsUUID } from 'class-validator';
 
-import { SWAGGER_EXAMPLE } from '../../../common/constants';
+import { BUSINESS_RULE, SWAGGER_EXAMPLE, UNSPECIFIED } from '../../../common/constants';
 import { PaginationQueryDto } from '../../../common/dto';
 import {
+  AttentionKind,
   EntryType,
+  FunnelStage,
+  LeadSource,
   LeadStatus,
+  LostReason,
   ProjectStatus,
   ProjectType,
   TargetPeriod,
+  TrendBucket,
   UserRole,
 } from '../../../common/enums';
 import { IsIsoDate } from '../../../common/validators/is-iso-date.validator';
@@ -195,8 +200,45 @@ export class HomeDto {
   @ApiProperty({ description: 'Leads the caller owns.' })
   myLeads: number;
 
+  @ApiProperty({
+    description: 'Leads converted and credited to the caller this calendar month, India time.',
+  })
+  conversionsThisMonth: number;
+
+  @ApiProperty({
+    example: 14990,
+    description:
+      'Sum of the deal values (₹/month) of those conversions; a lead without one adds 0.',
+  })
+  revenueThisMonth: number;
+
   @ApiPropertyOptional({ nullable: true, type: String })
   notice: string | null;
+}
+
+/** The member's own leads by what needs doing, for the home screen's agenda. */
+export class AgendaDto {
+  @ApiProperty({ description: 'Next follow-up date before today.' })
+  overdue: number;
+
+  @ApiProperty({ description: 'Next follow-up date today.' })
+  today: number;
+
+  @ApiProperty({ description: 'Next follow-up date tomorrow.' })
+  tomorrow: number;
+
+  @ApiProperty({
+    description: 'Next follow-up date from tomorrow to 7 days ahead (tomorrow included).',
+  })
+  thisWeek: number;
+
+  @ApiProperty({
+    description: `Open leads with no entry for ${BUSINESS_RULE.COLD_LEAD_DAYS} days.`,
+  })
+  cold: number;
+
+  @ApiProperty({ description: 'New leads with no entry at all — imported and never contacted.' })
+  untouched: number;
 }
 
 // ----------------------------------------------------------------- timeline
@@ -270,7 +312,7 @@ export class DaySummaryDto {
   @ApiProperty()
   statusChanges: number;
 
-  @ApiProperty({ description: 'Leads this person added (their first entry on the lead).' })
+  @ApiProperty({ description: 'Leads this person added, or imported.' })
   newLeads: number;
 
   @ApiProperty({ description: 'Leads converted and credited to this person.' })
@@ -329,6 +371,9 @@ export class PersonActivityDto {
   @ApiProperty({ description: 'Conversions credited to this person in the range.' })
   conversions: number;
 
+  @ApiProperty({ description: 'Sum of the deal values (₹/month) of those conversions.' })
+  revenue: number;
+
   @ApiProperty()
   followUpsToday: number;
 }
@@ -376,6 +421,78 @@ export class ConversionDto {
   via: EntryType;
 }
 
+export class FunnelStepDto {
+  @ApiProperty({ enum: FunnelStage })
+  stage: FunnelStage;
+
+  @ApiProperty({ description: 'Leads added in the range that have reached this stage.' })
+  count: number;
+}
+
+export class TrendPointDto {
+  @ApiProperty({
+    example: SWAGGER_EXAMPLE.DATE,
+    description: 'The India day, or the first day of the week inside the range.',
+  })
+  date: string;
+
+  @ApiProperty()
+  followUps: number;
+
+  @ApiProperty()
+  newLeads: number;
+
+  @ApiProperty()
+  conversions: number;
+
+  @ApiProperty({ description: 'Deal values (₹/month) of those conversions.' })
+  revenue: number;
+}
+
+export class ReasonCountDto {
+  @ApiProperty({ enum: [...Object.values(LostReason), UNSPECIFIED] })
+  reason: LostReason | typeof UNSPECIFIED;
+
+  @ApiProperty()
+  count: number;
+}
+
+export class SourceCountDto {
+  @ApiProperty({ enum: [...Object.values(LeadSource), UNSPECIFIED] })
+  source: LeadSource | typeof UNSPECIFIED;
+
+  @ApiProperty()
+  count: number;
+}
+
+/** Something an admin should look at now, whatever the date range. */
+export class AttentionItemDto {
+  @ApiProperty({ enum: AttentionKind })
+  kind: AttentionKind;
+
+  @ApiPropertyOptional({
+    type: PersonRefDto,
+    nullable: true,
+    description: 'Who it is about; for a transfer, who asked for it.',
+  })
+  user: PersonRefDto | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    description: 'Null when it spans several projects.',
+  })
+  projectName: string | null;
+
+  @ApiProperty({ example: '7 leads overdue for a follow-up.' })
+  detail: string;
+
+  @ApiPropertyOptional({
+    description: '`overdue_pile`: the overdue leads. `idle`: the person’s open leads.',
+  })
+  leadCount?: number;
+}
+
 export class DashboardDto {
   @ApiProperty({ example: SWAGGER_EXAMPLE.DATE })
   from: string;
@@ -389,7 +506,7 @@ export class DashboardDto {
   })
   targets: TargetProgressDto[];
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Leads added or imported in the range.' })
   newLeads: number;
 
   @ApiProperty({ description: 'Follow-ups logged in the range.' })
@@ -398,8 +515,51 @@ export class DashboardDto {
   @ApiProperty()
   followUpsToday: number;
 
+  @ApiProperty({ description: 'Leads converted in the range.' })
+  conversions: number;
+
+  @ApiProperty({ description: 'Sum of the deal values (₹/month) of those conversions.' })
+  revenue: number;
+
+  @ApiProperty({
+    type: [FunnelStepDto],
+    description:
+      'Leads added in the range by the furthest stage their status has reached: created, contacted (not New), interested (Interested, Follow-up scheduled, Converted), converted.',
+  })
+  funnel: FunnelStepDto[];
+
+  @ApiProperty({
+    enum: TrendBucket,
+    description: `\`week\` when the range is longer than ${BUSINESS_RULE.TREND_MAX_DAILY_POINTS} days.`,
+  })
+  trendBucket: TrendBucket;
+
+  @ApiProperty({
+    type: [TrendPointDto],
+    description: 'Every day (or week) in the range, zeros included.',
+  })
+  trend: TrendPointDto[];
+
+  @ApiProperty({
+    type: [ReasonCountDto],
+    description: 'Reasons on Not interested and Lost entries in the range, most common first.',
+  })
+  lostReasons: ReasonCountDto[];
+
+  @ApiProperty({
+    type: [SourceCountDto],
+    description: 'Leads added in the range by source, most common first.',
+  })
+  sources: SourceCountDto[];
+
   @ApiProperty({ type: [PersonActivityDto] })
   people: PersonActivityDto[];
+
+  @ApiProperty({
+    type: [AttentionItemDto],
+    description: `Right now, not the range: at most ${BUSINESS_RULE.ATTENTION_LIST_LIMIT}, most severe first.`,
+  })
+  needsAttention: AttentionItemDto[];
 
   @ApiProperty({ type: [IdleMemberDto], description: 'Active members with no entry today.' })
   loggedNothingToday: IdleMemberDto[];

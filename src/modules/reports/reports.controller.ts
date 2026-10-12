@@ -21,6 +21,7 @@ import { UserRole } from '../../common/enums';
 import { LeadSummaryDto } from '../leads/dto/lead.dto';
 import { DashboardService } from './dashboard.service';
 import {
+  AgendaDto,
   DashboardDto,
   DueTodayQueryDto,
   ExportFilterDto,
@@ -64,7 +65,7 @@ export class ReportsController {
   @ApiOperation({
     summary: 'Home screen numbers',
     description:
-      'Own target progress per project (or one project), how many leads are due or overdue, follow-ups logged today and leads owned.',
+      'Own target progress per project (or one project), how many leads are due or overdue, follow-ups logged today, leads owned, and conversions and revenue (sum of deal values) credited this calendar month.',
   })
   @ApiOkEnvelope(HomeDto)
   home(
@@ -72,6 +73,21 @@ export class ReportsController {
     @Query() query: ProjectFilterQueryDto,
   ): Promise<HomeDto> {
     return this.meService.home(actor, query.projectId);
+  }
+
+  @Get(`${ROUTE.ME}/agenda`)
+  @ApiTags(SWAGGER_TAG.ME)
+  @Roles(UserRole.SALES_PERSON, UserRole.MODERATOR)
+  @ApiOperation({
+    summary: 'My agenda',
+    description: `Own leads in active projects, counted by what needs doing: overdue, due today, tomorrow, in the next 7 days (tomorrow included), cold (open, no entry for ${BUSINESS_RULE.COLD_LEAD_DAYS} days) and untouched (New with no entry, e.g. imported). Each count matches the lead list with the same \`due\` or \`cold\` filter.`,
+  })
+  @ApiOkEnvelope(AgendaDto)
+  agenda(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Query() query: ProjectFilterQueryDto,
+  ): Promise<AgendaDto> {
+    return this.meService.agenda(actor, query.projectId);
   }
 
   @Get(`${ROUTE.ME}/due-today`)
@@ -129,8 +145,11 @@ export class ReportsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.MODERATOR)
   @ApiOperation({
     summary: 'Admin dashboard',
-    description:
-      'Target vs achieved per person (current week/month), new leads and follow-ups in the date range, follow-ups today, who logged nothing today, leads by status, this week’s conversions to spot-check, and pending transfers. Filters: date range, project, person. A moderator’s numbers cover only his projects.',
+    description: [
+      'Target vs achieved per person (current week/month), new leads and follow-ups in the date range, follow-ups today, who logged nothing today, leads by status, this week’s conversions to spot-check, and pending transfers. Filters: date range (at most 366 days), project, person. A moderator’s numbers cover only his projects.',
+      '',
+      'Insights for the range: conversions and revenue, the funnel of leads added, a day-by-day trend (week by week past 92 days), lost reasons and lead sources. `needsAttention` is about right now: people behind target, piles of overdue leads, idle members and transfers waiting over a day.',
+    ].join('\n'),
   })
   @ApiOkEnvelope(DashboardDto)
   dashboard(
@@ -148,7 +167,7 @@ export class ReportsController {
   @ApiProduces(MIME_TYPE.CSV)
   @ApiOperation({
     summary: 'Export leads (CSV)',
-    description: `Leads added in the date range, with their current state. At most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days per file.`,
+    description: `Leads added in the date range, with their current state, deal value, plan, source and last activity. At most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days and 20,000 rows per file.`,
   })
   async exportLeads(
     @CurrentUser() actor: AuthenticatedUser,
@@ -163,7 +182,7 @@ export class ReportsController {
   @ApiProduces(MIME_TYPE.CSV)
   @ApiOperation({
     summary: 'Export follow-ups (CSV)',
-    description: `Every entry in the date range with latitude, longitude, accuracy and a photo link that opens only after login. At most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days per file.`,
+    description: `Every entry in the date range with its lost reason, latitude, longitude, accuracy and a photo link that opens only after login. At most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days and 20,000 rows per file.`,
   })
   async exportEntries(
     @CurrentUser() actor: AuthenticatedUser,

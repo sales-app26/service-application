@@ -1,10 +1,13 @@
 import { ERROR_CODE, FOLLOW_UP_ERROR } from '../../common/constants';
-import { LeadStatus } from '../../common/enums';
+import { LeadStatus, LostReason } from '../../common/enums';
 import {
   assertFollowUpStatus,
   assertManualStatusChange,
+  coldSince,
   conversionAfter,
+  dealChangesAfter,
   resolveNextFollowUpDate,
+  resolveReason,
 } from './lead-rules';
 
 const TODAY = '2026-10-08';
@@ -151,5 +154,62 @@ describe('conversionAfter (credit and time)', () => {
       convertedAt: at,
       convertedBy: 'current',
     });
+  });
+});
+
+describe('resolveReason', () => {
+  it.each([LeadStatus.NOT_INTERESTED, LeadStatus.LOST])('keeps a reason for %s', (status) => {
+    expect(resolveReason(status, LostReason.PRICE)).toBe(LostReason.PRICE);
+  });
+
+  it('is optional, even for Lost', () => {
+    expect(resolveReason(LeadStatus.LOST, undefined)).toBeNull();
+    expect(resolveReason(LeadStatus.CONTACTED, null)).toBeNull();
+  });
+
+  it.each([LeadStatus.CONTACTED, LeadStatus.INTERESTED, LeadStatus.CONVERTED])(
+    'refuses a reason for %s as a validation error',
+    (status) => {
+      expect(() => resolveReason(status, LostReason.COMPETITOR)).toThrow(
+        expect.objectContaining({
+          message: FOLLOW_UP_ERROR.REASON_NOT_ALLOWED,
+          errorCode: ERROR_CODE.VALIDATION_FAILED,
+        }),
+      );
+    },
+  );
+});
+
+describe('dealChangesAfter', () => {
+  it('writes what a Converted entry sends, and only that', () => {
+    expect(dealChangesAfter(LeadStatus.CONVERTED, { dealValue: 1499, plan: 'Gold' })).toEqual({
+      dealValue: 1499,
+      plan: 'Gold',
+    });
+    expect(dealChangesAfter(LeadStatus.CONVERTED, { dealValue: 0 })).toEqual({ dealValue: 0 });
+    // A follow-up visit on a converted lead that sends nothing keeps the deal.
+    expect(dealChangesAfter(LeadStatus.CONVERTED, {})).toEqual({});
+  });
+
+  it('ignores empty values, so a blank form field never clears the deal', () => {
+    expect(dealChangesAfter(LeadStatus.CONTACTED, { dealValue: undefined, plan: null })).toEqual(
+      {},
+    );
+  });
+
+  it('refuses a deal on any other status as a validation error', () => {
+    expect(() => dealChangesAfter(LeadStatus.INTERESTED, { plan: 'Gold' })).toThrow(
+      expect.objectContaining({
+        message: FOLLOW_UP_ERROR.DEAL_ONLY_WHEN_CONVERTED,
+        errorCode: ERROR_CODE.VALIDATION_FAILED,
+      }),
+    );
+  });
+});
+
+describe('coldSince', () => {
+  it('is exactly 14 days before now', () => {
+    const now = new Date('2026-10-15T06:00:00.000Z');
+    expect(coldSince(now).toISOString()).toBe('2026-10-01T06:00:00.000Z');
   });
 });

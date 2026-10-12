@@ -9,14 +9,15 @@ import {
 } from 'typeorm';
 
 import { PG_TYPE, SQL_DEFAULT, TABLE } from '../../common/constants';
-import { LeadStatus } from '../../common/enums';
+import { LeadSource, LeadStatus } from '../../common/enums';
 import { Location } from './location.entity';
 import { Project } from './project.entity';
 import { User } from './user.entity';
 
 /**
  * One client in one project — the current state only (DB Design §2.5).
- * The history is in `follow_ups`; every lead has at least one entry.
+ * The history is in `follow_ups`; every lead added in the app has at least
+ * one entry, and an imported lead has none until its owner logs one.
  */
 @Entity({ name: TABLE.LEADS })
 export class Lead {
@@ -74,6 +75,33 @@ export class Lead {
   /** The owner at the moment of conversion. Keeps the credit across transfers. */
   @Column({ name: 'converted_by', type: PG_TYPE.UUID, nullable: true })
   convertedBy: string | null;
+
+  /** Rupees per month. Revenue is the sum over converted leads. @example 1499 */
+  @Column({ name: 'deal_value', type: PG_TYPE.INTEGER, nullable: true })
+  dealValue: number | null;
+
+  /** The plan sold or offered. @example Annual Gold */
+  @Column({ name: 'plan', type: PG_TYPE.TEXT, nullable: true })
+  plan: string | null;
+
+  @Column({ name: 'source', type: PG_TYPE.TEXT, nullable: true })
+  source: LeadSource | null;
+
+  /**
+   * Who added it: the person who logged the first entry, or the admin who
+   * imported it. Credits "new leads" even after a transfer. Null only for
+   * leads imported before this was recorded.
+   */
+  @Column({ name: 'created_by', type: PG_TYPE.UUID, nullable: true })
+  createdBy: string | null;
+
+  /** The latest entry's time, else when the lead was added. Drives "cold" leads. */
+  @Column({
+    name: 'last_activity_at',
+    type: PG_TYPE.TIMESTAMPTZ,
+    default: () => SQL_DEFAULT.NOW,
+  })
+  lastActivityAt: Date;
 
   @CreateDateColumn({
     name: 'created_at',

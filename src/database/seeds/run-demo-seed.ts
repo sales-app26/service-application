@@ -344,8 +344,9 @@ async function insertLead(
   await manager.query(
     `INSERT INTO ${SQL_TABLE.LEADS}
        (id, project_id, owner_id, name, business_name, phone, location_id, notes, status,
-        next_follow_up_date, converted_at, converted_by, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        next_follow_up_date, converted_at, converted_by, created_at, updated_at,
+        created_by, last_activity_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $14)`,
     [
       plan.leadId,
       ids.projectId,
@@ -361,6 +362,7 @@ async function insertLead(
       convertedBy,
       entries[0].createdAt,
       last.createdAt,
+      entries[0].userId,
     ],
   );
 

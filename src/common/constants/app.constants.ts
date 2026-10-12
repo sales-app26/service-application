@@ -103,3 +103,14 @@ export const SUCCESS_MESSAGE = {
   NO_DATA: 'No data for these dates.',
   NO_PROJECTS: 'You are not assigned to any project yet.',
 } as const;
+
+/** The `detail` line of each dashboard "Needs attention" item. */
+export const ATTENTION_DETAIL = {
+  BEHIND_TARGET: (achieved: number, target: number, period: string, elapsedPercent: number) =>
+    `${achieved} of ${target} conversions with ${elapsedPercent}% of the ${period} gone.`,
+  OVERDUE_PILE: (count: number) => `${count} leads overdue for a follow-up.`,
+  IDLE: (days: number) => `No entry for ${days} days.`,
+  IDLE_NEVER: (days: number) => `Nothing logged since joining ${days} days ago.`,
+  STALE_TRANSFER: (lead: string, to: string, hours: number) =>
+    `Transfer of ${lead} to ${to} waiting ${hours} hours.`,
+} as const;

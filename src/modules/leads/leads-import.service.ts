@@ -12,7 +12,7 @@ import {
   SQL_TABLE,
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
-import { LeadStatus } from '../../common/enums';
+import { LeadSource, LeadStatus } from '../../common/enums';
 import {
   BusinessException,
   ConflictBusinessException,
@@ -78,7 +78,8 @@ interface ReadyRow {
  *
  * Imported leads are plain assignments: status New, no first follow-up, no visit
  * photo — even in a door-to-door project, because nobody has visited yet. The
- * owner finds them in My leads and logs the first visit as usual.
+ * owner finds them in My leads and logs the first visit as usual. Each is marked
+ * with source `import` and credited as added by the admin who imported it.
  *
  * Rows that cannot be imported are skipped and reported; the rest go in. A dry
  * run does everything except the final insert, so the admin sees the same report
@@ -370,6 +371,7 @@ export class LeadsImportService {
     try {
       await this.dataSource.transaction(async (manager) => {
         await this.access.lockOpenProject(manager, projectId);
+        const now = new Date();
 
         const locationIds = new Map<string, string>();
         for (const row of rows) {
@@ -393,6 +395,9 @@ export class LeadsImportService {
           notes: row.notes,
           status: LeadStatus.NEW,
           nextFollowUpDate: null,
+          source: LeadSource.IMPORT,
+          createdBy: actor.id,
+          lastActivityAt: now,
         }));
         for (let i = 0; i < leads.length; i += INSERT_CHUNK) {
           await manager.insert(Lead, leads.slice(i, i + INSERT_CHUNK));

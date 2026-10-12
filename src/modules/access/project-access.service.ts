@@ -93,6 +93,38 @@ export class ProjectAccessService {
     return count > 0;
   }
 
+  /**
+   * Of `userIds`, those who are also active members of a project `moderatorId` is not in.
+   * Account-wide actions (a reset link, deactivation) reach all of a person's projects, so a
+   * moderator may take them only for people who work nowhere else.
+   */
+  async withProjectsOutside(moderatorId: string, userIds: string[]): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const rows = await this.members
+      .createQueryBuilder('t')
+      .select('DISTINCT t.user_id', 'userId')
+      .where('t.user_id IN (:...userIds) AND t.is_active', { userIds })
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM ${SQL_TABLE.PROJECT_MEMBERS} m
+                      WHERE m.project_id = t.project_id AND m.user_id = :moderatorId AND m.is_active)`,
+        { moderatorId },
+      )
+      .getRawMany<{ userId: string }>();
+    return new Set(rows.map((r) => r.userId));
+  }
+
+  /** TRUE when the person is, or was, a member of a project the moderator is active in. */
+  async everSharedProject(moderatorId: string, userId: string): Promise<boolean> {
+    const count = await this.members
+      .createQueryBuilder('a')
+      .innerJoin(ProjectMember, 'b', 'b.project_id = a.project_id AND b.user_id = :userId', {
+        userId,
+      })
+      .where('a.user_id = :moderatorId AND a.is_active', { moderatorId })
+      .getCount();
+    return count > 0;
+  }
+
   async findProjectOrFail(projectId: string, manager?: EntityManager): Promise<Project> {
     const repository = manager ? manager.getRepository(Project) : this.projects;
     const project = await repository.findOne({ where: { id: projectId } });

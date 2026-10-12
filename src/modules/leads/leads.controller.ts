@@ -125,7 +125,7 @@ export class LeadsController {
       '',
       'To assign on screen: send the file with `dryRun=true&review=true`, which lists every importable row in `rows` without needing owners; then send it again with `assignments`.',
       '',
-      'Imported leads start as New with no follow-up and no visit photo. Rows that cannot be imported (bad phone, unknown owner, a number already a lead here or repeated in the file) are skipped and listed; the others go in. `dryRun=true` returns the same report and changes nothing.',
+      'Imported leads start as New with no follow-up and no visit photo, with source `import`, added by the importing admin. Rows that cannot be imported (bad phone, unknown owner, a number already a lead here or repeated in the file) are skipped and listed; the others go in. `dryRun=true` returns the same report and changes nothing.',
     ].join('\n'),
   })
   @ApiOkEnvelope(ImportResultDto)
@@ -147,7 +147,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Add a lead with its first follow-up',
     description: [
-      'Name, phone and location are required. The phone may not already be a lead in this project:',
+      'Name, phone and location are required; deal value, plan and source are optional. A `reason` is accepted only with Not interested or Lost. The phone may not already be a lead in this project:',
       '- yours → `409 DUPLICATE_LEAD_OWN` with `details.leadId`;',
       '- someone else’s → `409 DUPLICATE_LEAD_OTHER`, naming only the owner.',
       '',
@@ -168,7 +168,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'List leads in a project',
     description:
-      'Sales persons get only their own leads. Admins get all, can filter by owner, and see `ownerTag` when an owner is deactivated or removed. Search matches name, business name or phone.',
+      'Sales persons get only their own leads. Admins get all, can filter by owner, and see `ownerTag` when an owner is deactivated or removed. Search matches name, business name or phone. `due` filters by next follow-up date (India time), `cold=true` keeps open leads untouched for 14 days, `source` by source; `sort=value` puts the biggest deals first and `sort=activity` the longest untouched.',
   })
   @ApiPaginatedEnvelope(LeadSummaryDto)
   list(
@@ -209,7 +209,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Edit a lead (owner only)',
     description:
-      'Name, business name, phone, notes and location, at any time. A new phone is re-checked for duplicates.',
+      'Name, business name, phone, notes, location, deal value, plan and source, at any time. A new phone is re-checked for duplicates.',
   })
   @ApiOkEnvelope(LeadDetailDto)
   update(
@@ -247,6 +247,8 @@ export class LeadsController {
     description: [
       'Status cannot go back to New. A Converted lead can be followed up but stays Converted. Next date: required for Follow-up scheduled, cleared for Not interested / Converted / Lost, never in the past, at most a year ahead.',
       '',
+      '`reason` only with Not interested or Lost; `dealValue` and `plan` only with Converted, and are written to the lead. Anything else is `400 VALIDATION_FAILED`.',
+      '',
       'Refused with `409 PROJECT_CLOSED` if the project closed while the form was open, and `409 LEAD_TRANSFERRED` ("This lead now belongs to …") if the lead was transferred meanwhile.',
       '',
       DOOR_TO_DOOR_NOTE,
@@ -269,7 +271,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Change a lead’s status by hand',
     description:
-      'The owner or an admin, with a reason. Recorded in the history as a status change. Only an admin can move a lead away from Converted ("Ask your moderator to change this."); doing so removes the conversion credit. No photo is asked.',
+      'The owner or an admin, with a note. Recorded in the history as a status change. Only an admin can move a lead away from Converted ("Ask your moderator to change this."); doing so removes the conversion credit. No photo is asked. `reason` only with Not interested or Lost; `dealValue` and `plan` only with Converted.',
   })
   @ApiOkEnvelope(EntrySaveResultDto)
   changeStatus(

@@ -4,24 +4,29 @@ import {
   IsBoolean,
   IsEnum,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   ValidateIf,
 } from 'class-validator';
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
 import { PaginationQueryDto } from '../../../common/dto';
 import {
+  LeadDue,
   LeadOwnerTag,
+  LeadSource,
   LeadStatus,
   ProjectStatus,
   ProjectType,
   TransferStatus,
 } from '../../../common/enums';
-import { toBoolean, trimString, trimToNull } from '../../../common/utils';
+import { emptyToUndefined, toBoolean, trimString, trimToNull } from '../../../common/utils';
 import { LocationRefDto } from '../../locations/dto/location.dto';
 import { EntryDto, LogFollowUpDto, PersonRefDto } from './entry.dto';
 
@@ -101,6 +106,30 @@ export class LeadSummaryDto {
 
   @ApiPropertyOptional({ nullable: true, type: Date })
   convertedAt: Date | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    example: 1499,
+    description: 'Rupees per month.',
+  })
+  dealValue: number | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String, example: 'Annual Gold' })
+  plan: string | null;
+
+  @ApiPropertyOptional({ enum: LeadSource, nullable: true })
+  source: LeadSource | null;
+
+  @ApiProperty({ description: 'The latest entry’s time, else when the lead was added.' })
+  lastActivityAt: Date;
+
+  @ApiPropertyOptional({
+    type: PersonRefDto,
+    nullable: true,
+    description: 'Who added the lead, or the admin who imported it.',
+  })
+  createdBy: PersonRefDto | null;
 
   @ApiProperty()
   hasPendingTransfer: boolean;
@@ -220,7 +249,14 @@ export class CreateLeadDto extends LogFollowUpDto {
   @MaxLength(BUSINESS_RULE.NOTES_MAX_LENGTH)
   notes?: string | null;
 
+  @ApiPropertyOptional({ enum: LeadSource, description: 'How the lead was found.' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(LeadSource)
+  source?: LeadSource;
+
   // `status` is inherited. On a new lead New is allowed — the only place it is.
+  // So are `dealValue` and `plan`, which a new lead takes with any status.
 }
 
 export class UpdateLeadDto {
@@ -262,7 +298,46 @@ export class UpdateLeadDto {
   @IsNotEmpty()
   @MaxLength(BUSINESS_RULE.LOCATION_MAX_LENGTH * 2)
   location?: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    minimum: 0,
+    maximum: BUSINESS_RULE.DEAL_VALUE_MAX,
+    example: 1499,
+    description: 'Rupees per month. Null clears it.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(0)
+  @Max(BUSINESS_RULE.DEAL_VALUE_MAX)
+  dealValue?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, maxLength: BUSINESS_RULE.PLAN_MAX_LENGTH })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(BUSINESS_RULE.PLAN_MAX_LENGTH)
+  plan?: string | null;
+
+  @ApiPropertyOptional({ enum: LeadSource, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsEnum(LeadSource)
+  source?: LeadSource | null;
 }
+
+/** Lead list sort keys. `value` is the biggest deal first; `activity` the longest untouched. */
+export const LEAD_SORT = [
+  'updated',
+  'created',
+  'name',
+  'next_follow_up',
+  'value',
+  'activity',
+] as const;
+export type LeadSort = (typeof LEAD_SORT)[number];
 
 export class ListLeadsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: LeadStatus })
@@ -288,10 +363,33 @@ export class ListLeadsQueryDto extends PaginationQueryDto {
   ownerUnavailable?: boolean;
 
   @ApiPropertyOptional({
-    enum: ['updated', 'created', 'name', 'next_follow_up'],
-    default: 'updated',
+    enum: LeadDue,
+    description:
+      'By next follow-up date, India time: `overdue` before today, `today`, `tomorrow`, `week` tomorrow to 7 days ahead, `none` open with no date.',
   })
   @IsOptional()
-  @IsIn(['updated', 'created', 'name', 'next_follow_up'])
-  sort?: 'updated' | 'created' | 'name' | 'next_follow_up';
+  @IsEnum(LeadDue)
+  due?: LeadDue;
+
+  @ApiPropertyOptional({
+    description: `Only open leads with no entry for ${BUSINESS_RULE.COLD_LEAD_DAYS} days.`,
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  cold?: boolean;
+
+  @ApiPropertyOptional({ enum: LeadSource })
+  @IsOptional()
+  @IsEnum(LeadSource)
+  source?: LeadSource;
+
+  @ApiPropertyOptional({
+    enum: LEAD_SORT,
+    default: 'updated',
+    description: '`value`: deal value, highest first. `activity`: longest untouched first.',
+  })
+  @IsOptional()
+  @IsIn(LEAD_SORT)
+  sort?: LeadSort;
 }

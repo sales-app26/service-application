@@ -57,6 +57,26 @@ export const BUSINESS_RULE = {
   SUMMARY_MAX_DAYS: 92,
   /** Lead detail shows this many recent entries; the rest are paged. */
   LEAD_DETAIL_RECENT_ENTRIES: 20,
+  /** Deal value in rupees per month: a whole number up to 10 crore. */
+  DEAL_VALUE_MAX: 100_000_000,
+  PLAN_MAX_LENGTH: 80,
+  /** An open lead with no entry for this many days is "cold". */
+  COLD_LEAD_DAYS: 14,
+  /** A dashboard covers at most a year (a leap year included). */
+  DASHBOARD_MAX_DAYS: 366,
+  /** Longer than this, the dashboard trend is counted per week instead of per day. */
+  TREND_MAX_DAILY_POINTS: 92,
+  /** One CSV export holds at most this many rows. */
+  EXPORT_MAX_ROWS: 20_000,
+  /** Needs attention: conversions this many percentage points behind the time gone. */
+  ATTENTION_BEHIND_TARGET_POINTS: 20,
+  /** Needs attention: this many overdue leads with one person in one project. */
+  ATTENTION_OVERDUE_PILE: 5,
+  /** Needs attention: no entry for this many India days (today included). */
+  ATTENTION_IDLE_DAYS: 2,
+  /** Needs attention: a transfer waiting longer than this. */
+  ATTENTION_STALE_TRANSFER_HOURS: 24,
+  ATTENTION_LIST_LIMIT: 20,
 } as const;
 
 /** Statuses after which no next follow-up date is asked, and any is cleared (PRD §4). */
@@ -68,6 +88,22 @@ export const TERMINAL_STATUSES: readonly LeadStatus[] = [
 
 /** Statuses that keep a lead off every Due today list (DB Design §5). */
 export const NOT_DUE_STATUSES = TERMINAL_STATUSES;
+
+/** The only statuses an entry may give a reason for (`follow_ups_reason_only_when_closed`). */
+export const REASON_STATUSES: readonly LeadStatus[] = [LeadStatus.NOT_INTERESTED, LeadStatus.LOST];
+
+/**
+ * Funnel stage "interested", reached by current status. "Contacted" is any
+ * status but New; "converted" is Converted.
+ */
+export const FUNNEL_INTERESTED_STATUSES: readonly LeadStatus[] = [
+  LeadStatus.INTERESTED,
+  LeadStatus.FOLLOW_UP_SCHEDULED,
+  LeadStatus.CONVERTED,
+];
+
+/** What a dashboard count reads when a lead or entry has no source or reason. */
+export const UNSPECIFIED = 'unspecified';
 
 /** Storage folders inside the private bucket. */
 export const STORAGE_FOLDER = {

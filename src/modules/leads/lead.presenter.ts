@@ -14,7 +14,7 @@ import { isTerminal } from './lead-rules';
  *
  * The owner tag and the pending-transfer flag are derived per page in two
  * queries, never stored: they follow the owner's account and membership, so
- * they cannot go stale (PRD §5.2, §5.4).
+ * they cannot go stale (PRD §5.2, §5.4). A third looks up who added each lead.
  */
 @Injectable()
 export class LeadPresenter {
@@ -24,7 +24,10 @@ export class LeadPresenter {
     if (leads.length === 0) return [];
 
     const leadIds = leads.map((lead) => lead.id);
-    const [pending, activeOwners] = await Promise.all([
+    const creatorIds = [
+      ...new Set(leads.map((lead) => lead.createdBy).filter((id): id is string => id !== null)),
+    ];
+    const [pending, activeOwners, creators] = await Promise.all([
       this.dataSource.query(
         `SELECT lead_id FROM ${SQL_TABLE.LEAD_TRANSFERS} WHERE status = $1 AND lead_id = ANY($2::uuid[])`,
         [TransferStatus.PENDING, leadIds],
@@ -39,10 +42,17 @@ export class LeadPresenter {
             [leadIds],
           ) as Promise<Array<{ id: string }>>)
         : Promise.resolve([] as Array<{ id: string }>),
+      creatorIds.length > 0
+        ? (this.dataSource.query(
+            `SELECT id, name FROM ${SQL_TABLE.USERS} WHERE id = ANY($1::uuid[])`,
+            [creatorIds],
+          ) as Promise<Array<{ id: string; name: string }>>)
+        : Promise.resolve([] as Array<{ id: string; name: string }>),
     ]);
 
     const pendingIds = new Set(pending.map((row) => row.lead_id));
     const ownerIsMember = new Set(activeOwners.map((row) => row.id));
+    const creatorById = new Map(creators.map((row) => [row.id, row]));
     const today = istToday();
 
     return leads.map((lead) => ({
@@ -64,6 +74,11 @@ export class LeadPresenter {
             : null
         : null,
       convertedAt: lead.convertedAt,
+      dealValue: lead.dealValue,
+      plan: lead.plan,
+      source: lead.source,
+      lastActivityAt: lead.lastActivityAt,
+      createdBy: lead.createdBy ? (creatorById.get(lead.createdBy) ?? null) : null,
       hasPendingTransfer: pendingIds.has(lead.id),
       createdAt: lead.createdAt,
       updatedAt: lead.updatedAt,

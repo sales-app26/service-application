@@ -12,7 +12,7 @@ import {
   SQL_TABLE,
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
-import { EntryType, LeadStatus } from '../../common/enums';
+import { EntryType, LeadSource, LeadStatus, LostReason } from '../../common/enums';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { daysBetween, formatIstDateTime, toCsv } from '../../common/utils';
 import { AppConfig } from '../../config/configuration';
@@ -26,8 +26,10 @@ export interface CsvFile {
 
 /**
  * CSV exports for the current filters (FR-15, PRD §5.12): leads, and
- * follow-ups with their GPS. At most 92 days per file (Assumption 12), and
- * a moderator's file covers only his projects.
+ * follow-ups with their GPS. At most 92 days (Assumption 12) and 20,000 rows
+ * per file, and a moderator's file covers only his projects. The row cap is
+ * checked by asking for one row more than allowed, so a file that is too big
+ * is refused without building it.
  *
  * The photo column links to the web app, not to storage: the file outlives
  * any signed URL and may be forwarded, so the link must ask for a login.
@@ -51,7 +53,8 @@ export class ExportsService {
     const rows = (await this.dataSource.query(
       `SELECT l.id, p.name AS project, l.name, l.business_name, l.phone, loc.name AS location,
               l.status, l.next_follow_up_date::text AS next_follow_up_date, o.name AS owner, o.is_active AS owner_active,
-              l.converted_at, cb.name AS converted_by, l.created_at, l.updated_at, l.notes
+              l.converted_at, cb.name AS converted_by, l.deal_value, l.plan, l.source,
+              l.created_at, l.updated_at, l.last_activity_at, l.notes
          FROM ${SQL_TABLE.LEADS} l
          JOIN ${SQL_TABLE.PROJECTS} p ON p.id = l.project_id
          JOIN ${SQL_TABLE.USERS} o ON o.id = l.owner_id
@@ -61,7 +64,8 @@ export class ExportsService {
           AND l.created_at >= $1 AND l.created_at < $2
           AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
           AND ($4::uuid IS NULL OR l.owner_id = $4::uuid)
-        ORDER BY l.created_at`,
+        ORDER BY l.created_at
+        LIMIT ${BUSINESS_RULE.EXPORT_MAX_ROWS + 1}`,
       [range.start, range.end, projectIds, filter.userId ?? null],
     )) as Array<{
       id: string;
@@ -76,10 +80,15 @@ export class ExportsService {
       owner_active: boolean;
       converted_at: Date | null;
       converted_by: string | null;
+      deal_value: number | null;
+      plan: string | null;
+      source: LeadSource | null;
       created_at: Date;
       updated_at: Date;
+      last_activity_at: Date;
       notes: string | null;
     }>;
+    this.assertRowCount(rows.length);
 
     const csv = toCsv(
       [
@@ -95,8 +104,12 @@ export class ExportsService {
         'Owner active',
         'Converted at (IST)',
         'Converted by',
+        'Deal value (₹/month)',
+        'Plan',
+        'Source',
         'Added at (IST)',
         'Updated at (IST)',
+        'Last activity (IST)',
         'Notes',
       ],
       rows.map((row) => [
@@ -112,8 +125,12 @@ export class ExportsService {
         row.owner_active ? 'yes' : 'no',
         formatIstDateTime(row.converted_at),
         row.converted_by,
+        row.deal_value,
+        row.plan,
+        row.source,
         formatIstDateTime(row.created_at),
         formatIstDateTime(row.updated_at),
+        formatIstDateTime(row.last_activity_at),
         row.notes,
       ]),
     );
@@ -127,7 +144,8 @@ export class ExportsService {
 
     const rows = (await this.dataSource.query(
       `SELECT f.id, f.created_at, f.updated_at, p.name AS project, l.name AS lead, l.business_name, l.phone,
-              u.name AS logged_by, f.entry_type, f.status, f.note, f.next_follow_up_date::text AS next_follow_up_date,
+              u.name AS logged_by, f.entry_type, f.status, f.reason, f.note,
+              f.next_follow_up_date::text AS next_follow_up_date,
               loc.name AS location, f.latitude, f.longitude, f.gps_accuracy_m,
               (f.photo_path IS NOT NULL) AS has_photo
          FROM ${SQL_TABLE.FOLLOW_UPS} f
@@ -139,7 +157,8 @@ export class ExportsService {
           AND f.created_at >= $1 AND f.created_at < $2
           AND ($3::uuid[] IS NULL OR f.project_id = ANY($3::uuid[]))
           AND ($4::uuid IS NULL OR f.user_id = $4::uuid)
-        ORDER BY f.created_at`,
+        ORDER BY f.created_at
+        LIMIT ${BUSINESS_RULE.EXPORT_MAX_ROWS + 1}`,
       [range.start, range.end, projectIds, filter.userId ?? null],
     )) as Array<{
       id: string;
@@ -152,6 +171,7 @@ export class ExportsService {
       logged_by: string;
       entry_type: EntryType;
       status: LeadStatus;
+      reason: LostReason | null;
       note: string | null;
       next_follow_up_date: string | null;
       location: string | null;
@@ -160,6 +180,7 @@ export class ExportsService {
       gps_accuracy_m: string | null;
       has_photo: boolean;
     }>;
+    this.assertRowCount(rows.length);
 
     const csv = toCsv(
       [
@@ -172,6 +193,7 @@ export class ExportsService {
         'Logged by',
         'Type',
         'Status',
+        'Reason',
         'Note',
         'Next follow-up',
         'Typed location',
@@ -194,6 +216,7 @@ export class ExportsService {
           row.logged_by,
           row.entry_type,
           row.status,
+          row.reason,
           row.note,
           row.next_follow_up_date,
           row.location,
@@ -220,6 +243,12 @@ export class ExportsService {
     }
     const projectIds = await this.scope.projectScope(actor, filter.projectId);
     return { range, projectIds };
+  }
+
+  private assertRowCount(count: number): void {
+    if (count > BUSINESS_RULE.EXPORT_MAX_ROWS) {
+      throw new BusinessException(REPORT_ERROR.EXPORT_TOO_MANY_ROWS, ERROR_CODE.VALIDATION_FAILED);
+    }
   }
 
   private photoLink(entryId: string): string {

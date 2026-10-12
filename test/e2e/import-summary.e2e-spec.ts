@@ -439,7 +439,7 @@ describe('Bulk import and person summary (e2e)', () => {
       expect(other.status).toBe(403);
     });
 
-    it('a moderator sees only entries in his projects; an unrelated one sees zeros', async () => {
+    it('a moderator sees only entries in his projects; an unrelated one cannot even find the person', async () => {
       expect(
         (await moderator.get(`/timeline/summary?userId=${ids.ravi}&from=${today}&to=${today}`)).body
           .data.totals.followUps,
@@ -447,13 +447,8 @@ describe('Bulk import and person summary (e2e)', () => {
       const outside = await outsideModerator.get(
         `/timeline/summary?userId=${ids.ravi}&from=${today}&to=${today}`,
       );
-      expect(outside.status).toBe(200);
-      expect(outside.body.data.totals).toMatchObject({
-        followUps: 0,
-        visits: 0,
-        conversions: 0,
-        activeDays: 0,
-      });
+      // Not in any of his projects: not found, so not even the name leaks.
+      expect(outside.status).toBe(404);
     });
 
     it('checks the range', async () => {

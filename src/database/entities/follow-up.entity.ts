@@ -1,7 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 
 import { PG_TYPE, TABLE } from '../../common/constants';
-import { EntryType, LeadStatus } from '../../common/enums';
+import { EntryType, LeadStatus, LostReason } from '../../common/enums';
 import { nullableNumericTransformer } from '../../common/utils/numeric.transformer';
 import { Lead } from './lead.entity';
 import { Location } from './location.entity';
@@ -54,6 +54,10 @@ export class FollowUp {
   /** Editable the same IST day only. */
   @Column({ name: 'note', type: PG_TYPE.TEXT, nullable: true })
   note: string | null;
+
+  /** Why the lead was turned down; only on Not interested and Lost. Never editable. */
+  @Column({ name: 'reason', type: PG_TYPE.TEXT, nullable: true })
+  reason: LostReason | null;
 
   /** Editable the same IST day only. */
   @Column({ name: 'next_follow_up_date', type: PG_TYPE.DATE, nullable: true })

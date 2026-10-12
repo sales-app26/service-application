@@ -41,12 +41,13 @@ time of day.
 | --- | --- |
 | Every route needs a login; a deactivated user is refused on their next request | `modules/auth/guards/auth.guard.ts` |
 | Project scope (Super Admin: all, Moderator: his projects, Sales person: his own leads) | `modules/access/project-access.service.ts`, `modules/leads/lead-access.service.ts` |
-| Status model, next follow-up date, conversion credit | `modules/leads/lead-rules.ts` (pure functions, unit-tested) |
+| Status model, next follow-up date, conversion credit, lost reasons, deal value on conversion, cold leads | `modules/leads/lead-rules.ts` (pure functions, unit-tested) |
 | Live photo + GPS, 10-minute window on the server clock, stamp, ~200–300 KB | `modules/visits/*`, `modules/media/image.service.ts` |
 | Idempotent saves (`clientRequestId`) | `follow_ups.client_request_id` unique, replay in `lead-access.service.ts` |
 | Same-day edit lock at midnight IST | `modules/leads/entries.service.ts` → `edit` |
 | Transfers: approval, no self-approval, first decision wins, auto-reject | `modules/transfers/*` |
-| Targets, Due today, timeline, dashboard, CSV exports (max 92 days) | `modules/reports/*` |
+| Targets, Due today, agenda, timeline, dashboard, CSV exports (max 92 days, 20,000 rows) | `modules/reports/*` |
+| Revenue trend bucketing, "behind target", "needs attention" ranking | `modules/reports/report-rules.ts` (pure functions, unit-tested) |
 
 All "today", week (Monday–Sunday) and month boundaries are India time (`common/utils/ist-time.util.ts`).
 
@@ -70,5 +71,5 @@ npm run test:e2e  # boots the API against PGlite and a fake Supabase
 | Entries | `POST leads/:id/follow-ups`, `POST leads/:id/status`, `GET/PATCH/DELETE entries/:id`, `GET entries/:id/photo` |
 | Visits | `POST visits/capture-token` |
 | Transfers | `POST leads/:id/transfers · reassign`, `POST projects/:id/leads/reassign`, `GET transfers`, `GET transfers/pending-count`, `POST transfers/:id/approve · reject` |
-| Reports | `GET me/home`, `GET me/due-today`, `GET timeline`, `GET dashboard`, `GET exports/leads · follow-ups` |
+| Reports | `GET me/home`, `GET me/agenda`, `GET me/due-today`, `GET timeline`, `GET timeline/summary`, `GET dashboard`, `GET exports/leads · follow-ups` |
 # service-application

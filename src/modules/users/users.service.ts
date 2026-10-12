@@ -119,8 +119,11 @@ export class UsersService {
       .getManyAndCount();
 
     const manageable = await this.manageableIds(actor, rows);
+    const outside = this.access.isSuperAdmin(actor)
+      ? new Set<string>()
+      : await this.access.withProjectsOutside(actor.id, [...manageable]);
     return PaginatedResponseDto.from(
-      [rows.map((row) => UserDto.from(row, manageable.has(row.id))), total],
+      [rows.map((row) => UserDto.from(row, manageable.has(row.id), !outside.has(row.id))), total],
       query.page,
       query.limit,
     );
@@ -137,7 +140,8 @@ export class UsersService {
       throw new NotFoundBusinessException(USER_ERROR.NOT_FOUND);
     }
 
-    return UserDto.from(user, await this.canManage(actor, user));
+    const canManage = await this.canManage(actor, user);
+    return UserDto.from(user, canManage, canManage && (await this.coversAccount(actor, user.id)));
   }
 
   // ------------------------------------------------------------------- writes
@@ -199,7 +203,10 @@ export class UsersService {
    * receive is rejected with "User deactivated".
    */
   async deactivate(actor: AuthenticatedUser, userId: string): Promise<UserDto> {
-    const user = await this.findManageableOrFail(actor, userId, { allowSelfAsSuperAdmin: true });
+    const user = await this.findManageableOrFail(actor, userId, {
+      allowSelfAsSuperAdmin: true,
+      account: true,
+    });
 
     if (!user.isActive) {
       throw new ConflictBusinessException(USER_ERROR.ALREADY_INACTIVE);
@@ -223,7 +230,7 @@ export class UsersService {
   }
 
   async reactivate(actor: AuthenticatedUser, userId: string): Promise<UserDto> {
-    const user = await this.findManageableOrFail(actor, userId);
+    const user = await this.findManageableOrFail(actor, userId, { account: true });
 
     if (user.isActive) {
       throw new ConflictBusinessException(USER_ERROR.ALREADY_ACTIVE);
@@ -235,7 +242,7 @@ export class UsersService {
 
   /** Super Admin only. History stays under the same person (Assumption 10). */
   async changeRole(actor: AuthenticatedUser, userId: string, dto: ChangeRoleDto): Promise<UserDto> {
-    const user = await this.findOrFail(userId);
+    const user = await this.findLiveOrFail(userId);
 
     if (user.role === dto.role) {
       throw new ConflictBusinessException(USER_ERROR.SAME_ROLE);
@@ -260,7 +267,7 @@ export class UsersService {
     userId: string,
     dto: ChangeEmailDto,
   ): Promise<UserDto> {
-    const user = await this.findOrFail(userId);
+    const user = await this.findLiveOrFail(userId);
 
     if (user.email === dto.email) {
       throw new ConflictBusinessException(USER_ERROR.SAME_EMAIL);
@@ -284,7 +291,8 @@ export class UsersService {
 
   /** A reset link the admin shares by hand: for people who can't find, or never got, the email. */
   async resetLink(actor: AuthenticatedUser, userId: string): Promise<{ link: string }> {
-    const user = await this.findManageableOrFail(actor, userId);
+    // The link signs whoever opens it in as this person: account-wide, like deactivation.
+    const user = await this.findManageableOrFail(actor, userId, { account: true });
     if (!user.isActive) throw new ConflictBusinessException(USER_ERROR.RESET_LINK_INACTIVE);
     try {
       const link = await this.authClient.createRecoveryLink(user.email);
@@ -417,16 +425,33 @@ export class UsersService {
     return user;
   }
 
+  /** As findOrFail, but a deleted (anonymised) person is not found: nothing may change them. */
+  private async findLiveOrFail(userId: string): Promise<User> {
+    const user = await this.findOrFail(userId);
+    if (user.deletedAt) {
+      throw new NotFoundBusinessException(USER_ERROR.NOT_FOUND);
+    }
+    return user;
+  }
+
+  /** A moderator's account-wide reach: none of the person's projects is outside his own. */
+  private async coversAccount(actor: AuthenticatedUser, userId: string): Promise<boolean> {
+    if (this.access.isSuperAdmin(actor)) return true;
+    return !(await this.access.withProjectsOutside(actor.id, [userId])).has(userId);
+  }
+
   /**
    * Super Admin: anyone (himself only where the caller says so). Moderator:
-   * a sales person he created or shares an active project with (BRD §2).
+   * a sales person he created or shares an active project with (BRD §2); for
+   * account-wide actions (`account`), only one who works in none of the
+   * projects he isn't in. Deleted people are never found.
    */
   private async findManageableOrFail(
     actor: AuthenticatedUser,
     userId: string,
-    options: { allowSelfAsSuperAdmin?: boolean } = {},
+    options: { allowSelfAsSuperAdmin?: boolean; account?: boolean } = {},
   ): Promise<User> {
-    const user = await this.findOrFail(userId);
+    const user = await this.findLiveOrFail(userId);
 
     if (
       user.id === actor.id &&
@@ -436,6 +461,9 @@ export class UsersService {
     }
     if (!(await this.canManage(actor, user))) {
       throw new ForbiddenBusinessException(USER_ERROR.NOT_MANAGEABLE);
+    }
+    if (options.account && !(await this.coversAccount(actor, user.id))) {
+      throw new ForbiddenBusinessException(USER_ERROR.ACCOUNT_OUTSIDE_SCOPE);
     }
     return user;
   }

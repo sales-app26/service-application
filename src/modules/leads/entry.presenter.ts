@@ -43,6 +43,7 @@ export class EntryPresenter {
       entryType: entry.entryType,
       status: entry.status,
       note: entry.note,
+      reason: entry.reason,
       nextFollowUpDate: entry.nextFollowUpDate,
       location: entry.location ? { id: entry.location.id, name: entry.location.name } : null,
       hasPhoto: entry.photoPath !== null,

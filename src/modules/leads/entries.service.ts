@@ -37,7 +37,9 @@ import {
   assertFollowUpStatus,
   assertManualStatusChange,
   conversionAfter,
+  dealChangesAfter,
   resolveNextFollowUpDate,
+  resolveReason,
 } from './lead-rules';
 import { LeadStateService } from './lead-state.service';
 import { LeadPresenter } from './lead.presenter';
@@ -54,6 +56,9 @@ interface UploadedPhoto {
  * lead apply in order, a transfer approved meanwhile is noticed, and a closed
  * project is noticed. Status, photo, GPS and time are never edited after
  * saving; only the note and next date, by the author, on the same IST day.
+ *
+ * Every save also stamps the lead's `last_activity_at` with the entry's time,
+ * and a Converted entry may record the deal value and plan on the lead.
  */
 @Injectable()
 export class EntriesService {
@@ -100,6 +105,8 @@ export class EntriesService {
       dto.nextFollowUpDate,
       istToday(now),
     );
+    const reason = resolveReason(dto.status, dto.reason);
+    const deal = dealChangesAfter(dto.status, dto);
     const locationName = this.locations.normaliseName(dto.location);
     const needsProof = this.visitProof.requiresProof(lead.project.type);
     const proofInput = { ...dto, photo };
@@ -149,6 +156,7 @@ export class EntriesService {
           entryType: EntryType.FOLLOW_UP,
           status: dto.status,
           note: dto.note,
+          reason,
           nextFollowUpDate,
           locationId: location.id,
           photoPath: proof?.photoPath ?? null,
@@ -164,7 +172,13 @@ export class EntriesService {
         await manager.update(
           Lead,
           { id: leadId },
-          { status: dto.status, nextFollowUpDate, ...conversionAfter(locked, dto.status, now) },
+          {
+            status: dto.status,
+            nextFollowUpDate,
+            lastActivityAt: now,
+            ...conversionAfter(locked, dto.status, now),
+            ...deal,
+          },
         );
       });
     } catch (error) {
@@ -210,6 +224,8 @@ export class EntriesService {
       dto.nextFollowUpDate,
       istToday(now),
     );
+    const reason = resolveReason(dto.status, dto.reason);
+    const deal = dealChangesAfter(dto.status, dto);
     const entryId = randomUUID();
 
     try {
@@ -230,6 +246,7 @@ export class EntriesService {
           entryType: EntryType.STATUS_CHANGE,
           status: dto.status,
           note: dto.note,
+          reason,
           nextFollowUpDate,
           locationId: null,
           clientRequestId: dto.clientRequestId,
@@ -242,7 +259,13 @@ export class EntriesService {
         await manager.update(
           Lead,
           { id: leadId },
-          { status: dto.status, nextFollowUpDate, ...conversionAfter(locked, dto.status, now) },
+          {
+            status: dto.status,
+            nextFollowUpDate,
+            lastActivityAt: now,
+            ...conversionAfter(locked, dto.status, now),
+            ...deal,
+          },
         );
       });
     } catch (error) {
@@ -276,6 +299,11 @@ export class EntriesService {
       if (await this.access.isAdminOf(actor, entry.projectId)) {
         throw new ForbiddenBusinessException(FOLLOW_UP_ERROR.ONLY_AUTHOR_EDITS);
       }
+      throw new NotFoundBusinessException(FOLLOW_UP_ERROR.NOT_FOUND);
+    }
+
+    // An author removed from the project since can no longer rewrite what they logged there.
+    if (!(await this.access.isActiveMember(entry.projectId, actor.id))) {
       throw new NotFoundBusinessException(FOLLOW_UP_ERROR.NOT_FOUND);
     }
 
@@ -329,7 +357,8 @@ export class EntriesService {
 
   /**
    * Super Admin only (Assumption 7). Hidden from timelines and counts; the
-   * lead's state falls back to what the remaining history says.
+   * lead's state, last activity included, falls back to what the remaining
+   * history says.
    */
   async remove(entryId: string): Promise<void> {
     const entry = await this.findLiveEntry(entryId);

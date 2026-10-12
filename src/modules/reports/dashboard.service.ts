@@ -2,27 +2,75 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-import { SUCCESS_MESSAGE, SQL_TABLE } from '../../common/constants';
-import { AuthenticatedUser } from '../../common/decorators';
-import { EntryType, LeadStatus, ProjectStatus, TransferStatus, UserRole } from '../../common/enums';
-import { istDayRange, istToday, istWeekRange } from '../../common/utils';
 import {
+  ATTENTION_DETAIL,
+  BUSINESS_RULE,
+  ERROR_CODE,
+  FUNNEL_INTERESTED_STATUSES,
+  REASON_STATUSES,
+  REPORT_ERROR,
+  SUCCESS_MESSAGE,
+  SQL_TABLE,
+  TERMINAL_STATUSES,
+  UNSPECIFIED,
+} from '../../common/constants';
+import { AuthenticatedUser } from '../../common/decorators';
+import {
+  AttentionKind,
+  EntryType,
+  FunnelStage,
+  LeadSource,
+  LeadStatus,
+  LostReason,
+  ProjectStatus,
+  TargetPeriod,
+  TransferStatus,
+  UserRole,
+} from '../../common/enums';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { daysBetween, istDateSql, istDayRange, istToday, istWeekRange } from '../../common/utils';
+import {
+  AttentionItemDto,
   ConversionDto,
   DashboardDto,
+  FunnelStepDto,
   IdleMemberDto,
   PersonActivityDto,
+  ReasonCountDto,
   ReportFilterDto,
+  SourceCountDto,
   StatusCountDto,
+  TargetProgressDto,
 } from './dto/report.dto';
-import { ReportScopeService } from './report-scope.service';
+import {
+  attentionSeverity,
+  buildTrend,
+  idleDays,
+  isBehindTarget,
+  rankAttention,
+  ScoredAttention,
+  targetPace,
+  TrendCounts,
+} from './report-rules';
+import { ReportScopeService, ResolvedRange } from './report-scope.service';
 import { TargetsService } from './targets.service';
 
 /** A week of conversions is small; this only guards a pathological week. */
 const CONVERSIONS_LIST_LIMIT = 500;
 
+const HOUR_MS = 60 * 60 * 1000;
+
 interface CountByUser {
   user_id: string;
   count: number;
+}
+
+/**
+ * Deal values are summed as float8 so the driver hands back a number rather
+ * than bigint's string; exact for any total below 2^53 rupees.
+ */
+interface ConversionsByUser extends CountByUser {
+  revenue: number;
 }
 
 /**
@@ -44,26 +92,52 @@ export class DashboardService {
 
   async build(actor: AuthenticatedUser, filter: ReportFilterDto): Promise<DashboardDto> {
     const range = this.scope.range(filter.from, filter.to);
+    if (daysBetween(range.from, range.to) + 1 > BUSINESS_RULE.DASHBOARD_MAX_DAYS) {
+      throw new BusinessException(
+        REPORT_ERROR.DASHBOARD_RANGE_TOO_LONG,
+        ERROR_CODE.VALIDATION_FAILED,
+      );
+    }
     const projectIds = await this.scope.projectScope(actor, filter.projectId);
     const userId = filter.userId ?? null;
-    const today = istDayRange(istToday());
-    const week = istWeekRange();
+    const now = new Date();
+    const today = istDayRange(istToday(now));
+    const week = istWeekRange(now);
 
-    const [targets, creators, followUps, conversions, idle, statuses, weekConversions, pending] =
-      await Promise.all([
-        this.targets.progress(projectIds, { userId: filter.userId }),
-        this.newLeadsByCreator(projectIds, userId, range.start, range.end),
-        this.followUpsByUser(projectIds, userId, range.start, range.end, today.start, today.end),
-        this.conversionsByUser(projectIds, userId, range.start, range.end),
-        this.loggedNothingToday(projectIds, userId, today.start, today.end),
-        this.leadsByStatus(projectIds, userId),
-        this.conversionsThisWeek(projectIds, userId, week.start, week.end),
-        this.pendingTransfers(projectIds),
-      ]);
+    const [
+      targets,
+      creators,
+      followUps,
+      conversions,
+      idle,
+      statuses,
+      weekConversions,
+      pending,
+      funnel,
+      trend,
+      lostReasons,
+      sources,
+    ] = await Promise.all([
+      this.targets.progress(projectIds, { userId: filter.userId, now }),
+      this.newLeadsByCreator(projectIds, userId, range.start, range.end),
+      this.followUpsByUser(projectIds, userId, range.start, range.end, today.start, today.end),
+      this.conversionsByUser(projectIds, userId, range.start, range.end),
+      this.loggedNothingToday(projectIds, userId, today.start, today.end),
+      this.leadsByStatus(projectIds, userId),
+      this.conversionsThisWeek(projectIds, userId, week.start, week.end),
+      this.pendingTransfers(projectIds),
+      this.funnel(projectIds, userId, range.start, range.end),
+      this.trend(projectIds, userId, range),
+      this.lostReasons(projectIds, userId, range.start, range.end),
+      this.sources(projectIds, userId, range.start, range.end),
+    ]);
 
     const newLeads = sum(creators);
     const followUpsInRange = followUps.reduce((total, row) => total + row.in_range, 0);
-    const people = await this.people(projectIds, userId, creators, followUps, conversions);
+    const [people, needsAttention] = await Promise.all([
+      this.people(projectIds, userId, creators, followUps, conversions),
+      this.needsAttention(projectIds, userId, targets, now),
+    ]);
 
     return {
       from: range.from,
@@ -72,7 +146,15 @@ export class DashboardService {
       newLeads,
       followUps: followUpsInRange,
       followUpsToday: followUps.reduce((total, row) => total + row.today, 0),
+      conversions: sum(conversions),
+      revenue: conversions.reduce((total, row) => total + row.revenue, 0),
+      funnel,
+      trendBucket: trend.bucket,
+      trend: trend.points,
+      lostReasons,
+      sources,
       people,
+      needsAttention,
       loggedNothingToday: idle,
       leadsByStatus: statuses,
       conversionsThisWeek: weekConversions,
@@ -82,8 +164,10 @@ export class DashboardService {
   }
 
   /**
-   * Leads added in the range, credited to whoever logged the lead's first
-   * entry — the person who added it, even if it has since been transferred.
+   * Leads added in the range, credited to `created_by` — whoever added it in
+   * the app, or the admin who imported it — even if it has since been
+   * transferred. Leads imported before that was recorded count in the total
+   * under a null person.
    */
   private newLeadsByCreator(
     scope: string[] | null,
@@ -92,19 +176,13 @@ export class DashboardService {
     end: Date,
   ): Promise<CountByUser[]> {
     return this.dataSource.query(
-      `SELECT creator.user_id, count(*)::int AS count
+      `SELECT l.created_by AS user_id, count(*)::int AS count
          FROM ${SQL_TABLE.LEADS} l
-         CROSS JOIN LATERAL (
-           SELECT f.user_id FROM ${SQL_TABLE.FOLLOW_UPS} f
-            WHERE f.lead_id = l.id
-            ORDER BY f.created_at, f.id
-            LIMIT 1
-         ) creator
         WHERE l.deleted_at IS NULL
           AND l.created_at >= $1 AND l.created_at < $2
           AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
-          AND ($4::uuid IS NULL OR creator.user_id = $4::uuid)
-        GROUP BY creator.user_id`,
+          AND ($4::uuid IS NULL OR l.created_by = $4::uuid)
+        GROUP BY l.created_by`,
       [start, end, scope, userId],
     );
   }
@@ -139,9 +217,10 @@ export class DashboardService {
     userId: string | null,
     start: Date,
     end: Date,
-  ): Promise<CountByUser[]> {
+  ): Promise<ConversionsByUser[]> {
     return this.dataSource.query(
-      `SELECT l.converted_by AS user_id, count(*)::int AS count
+      `SELECT l.converted_by AS user_id, count(*)::int AS count,
+              coalesce(sum(l.deal_value), 0)::float8 AS revenue
          FROM ${SQL_TABLE.LEADS} l
         WHERE l.deleted_at IS NULL
           AND l.converted_at >= $1 AND l.converted_at < $2
@@ -290,7 +369,7 @@ export class DashboardService {
     userId: string | null,
     creators: CountByUser[],
     followUps: Array<{ user_id: string; in_range: number; today: number }>,
-    conversions: CountByUser[],
+    conversions: ConversionsByUser[],
   ): Promise<PersonActivityDto[]> {
     const activeIds = (await this.dataSource.query(
       `SELECT DISTINCT pm.user_id
@@ -302,12 +381,14 @@ export class DashboardService {
       [scope, userId],
     )) as Array<{ user_id: string }>;
 
-    const ids = new Set<string>([
-      ...activeIds.map((row) => row.user_id),
-      ...creators.map((row) => row.user_id),
-      ...followUps.map((row) => row.user_id),
-      ...conversions.map((row) => row.user_id),
-    ]);
+    const ids = new Set<string>(
+      [
+        ...activeIds.map((row) => row.user_id),
+        ...creators.map((row) => row.user_id),
+        ...followUps.map((row) => row.user_id),
+        ...conversions.map((row) => row.user_id),
+      ].filter((id) => id !== null),
+    );
     if (ids.size === 0) return [];
 
     const users = (await this.dataSource.query(
@@ -317,16 +398,333 @@ export class DashboardService {
 
     const created = new Map(creators.map((row) => [row.user_id, row.count]));
     const logged = new Map(followUps.map((row) => [row.user_id, row]));
-    const converted = new Map(conversions.map((row) => [row.user_id, row.count]));
+    const converted = new Map(conversions.map((row) => [row.user_id, row]));
 
     return users.map((user) => ({
       user: { id: user.id, name: user.name },
       role: user.role,
       newLeads: created.get(user.id) ?? 0,
       followUps: logged.get(user.id)?.in_range ?? 0,
-      conversions: converted.get(user.id) ?? 0,
+      conversions: converted.get(user.id)?.count ?? 0,
+      revenue: converted.get(user.id)?.revenue ?? 0,
       followUpsToday: logged.get(user.id)?.today ?? 0,
     }));
+  }
+
+  // ---------------------------------------------------------------- insights
+
+  /**
+   * Leads added in the range, by the furthest stage their current status has
+   * reached. With a person filter it follows the owner — whose pipeline it is —
+   * so leads imported for him count, unlike `newLeads`, which credits the adder.
+   */
+  private async funnel(
+    scope: string[] | null,
+    userId: string | null,
+    start: Date,
+    end: Date,
+  ): Promise<FunnelStepDto[]> {
+    const [row] = (await this.dataSource.query(
+      `SELECT count(*)::int AS created,
+              count(*) FILTER (WHERE l.status <> $5)::int AS contacted,
+              count(*) FILTER (WHERE l.status = ANY($6::text[]))::int AS interested,
+              count(*) FILTER (WHERE l.status = $7)::int AS converted
+         FROM ${SQL_TABLE.LEADS} l
+        WHERE l.deleted_at IS NULL
+          AND l.created_at >= $1 AND l.created_at < $2
+          AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
+          AND ($4::uuid IS NULL OR l.owner_id = $4::uuid)`,
+      [start, end, scope, userId, LeadStatus.NEW, FUNNEL_INTERESTED_STATUSES, LeadStatus.CONVERTED],
+    )) as Array<Record<FunnelStage, number>>;
+
+    return Object.values(FunnelStage).map((stage) => ({ stage, count: row?.[stage] ?? 0 }));
+  }
+
+  /** Follow-ups, new leads, conversions and revenue per India day, then bucketed. */
+  private async trend(scope: string[] | null, userId: string | null, range: ResolvedRange) {
+    const params = [range.start, range.end, scope, userId];
+    const [followUps, added, converted] = await Promise.all([
+      this.dataSource.query(
+        `SELECT ${istDateSql('f.created_at')} AS day, count(*)::int AS count
+           FROM ${SQL_TABLE.FOLLOW_UPS} f
+           JOIN ${SQL_TABLE.LEADS} l ON l.id = f.lead_id AND l.deleted_at IS NULL
+          WHERE f.deleted_at IS NULL
+            AND f.entry_type = $5
+            AND f.created_at >= $1 AND f.created_at < $2
+            AND ($3::uuid[] IS NULL OR f.project_id = ANY($3::uuid[]))
+            AND ($4::uuid IS NULL OR f.user_id = $4::uuid)
+          GROUP BY 1`,
+        [...params, EntryType.FOLLOW_UP],
+      ) as Promise<Array<{ day: string; count: number }>>,
+      this.dataSource.query(
+        `SELECT ${istDateSql('l.created_at')} AS day, count(*)::int AS count
+           FROM ${SQL_TABLE.LEADS} l
+          WHERE l.deleted_at IS NULL
+            AND l.created_at >= $1 AND l.created_at < $2
+            AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
+            AND ($4::uuid IS NULL OR l.created_by = $4::uuid)
+          GROUP BY 1`,
+        params,
+      ) as Promise<Array<{ day: string; count: number }>>,
+      this.dataSource.query(
+        `SELECT ${istDateSql('l.converted_at')} AS day, count(*)::int AS count,
+                coalesce(sum(l.deal_value), 0)::float8 AS revenue
+           FROM ${SQL_TABLE.LEADS} l
+          WHERE l.deleted_at IS NULL
+            AND l.converted_at >= $1 AND l.converted_at < $2
+            AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
+            AND ($4::uuid IS NULL OR l.converted_by = $4::uuid)
+          GROUP BY 1`,
+        params,
+      ) as Promise<Array<{ day: string; count: number; revenue: number }>>,
+    ]);
+
+    const byDay = new Map<string, Partial<TrendCounts>>();
+    const add = (day: string, counts: Partial<TrendCounts>): void => {
+      byDay.set(day, { ...byDay.get(day), ...counts });
+    };
+    followUps.forEach((row) => add(row.day, { followUps: row.count }));
+    added.forEach((row) => add(row.day, { newLeads: row.count }));
+    converted.forEach((row) => add(row.day, { conversions: row.count, revenue: row.revenue }));
+
+    return buildTrend(range.from, range.to, byDay);
+  }
+
+  /** Why leads were turned down in the range, from the reasons on those entries. */
+  private async lostReasons(
+    scope: string[] | null,
+    userId: string | null,
+    start: Date,
+    end: Date,
+  ): Promise<ReasonCountDto[]> {
+    return (await this.dataSource.query(
+      `SELECT coalesce(f.reason, $5) AS reason, count(*)::int AS count
+         FROM ${SQL_TABLE.FOLLOW_UPS} f
+         JOIN ${SQL_TABLE.LEADS} l ON l.id = f.lead_id AND l.deleted_at IS NULL
+        WHERE f.deleted_at IS NULL
+          AND f.status = ANY($6::text[])
+          AND f.created_at >= $1 AND f.created_at < $2
+          AND ($3::uuid[] IS NULL OR f.project_id = ANY($3::uuid[]))
+          AND ($4::uuid IS NULL OR f.user_id = $4::uuid)
+        GROUP BY 1
+        ORDER BY 2 DESC, 1`,
+      [start, end, scope, userId, UNSPECIFIED, REASON_STATUSES],
+    )) as Array<{ reason: LostReason | typeof UNSPECIFIED; count: number }>;
+  }
+
+  /** Leads added in the range by source; like the funnel, a person filter follows the owner. */
+  private async sources(
+    scope: string[] | null,
+    userId: string | null,
+    start: Date,
+    end: Date,
+  ): Promise<SourceCountDto[]> {
+    return (await this.dataSource.query(
+      `SELECT coalesce(l.source, $5) AS source, count(*)::int AS count
+         FROM ${SQL_TABLE.LEADS} l
+        WHERE l.deleted_at IS NULL
+          AND l.created_at >= $1 AND l.created_at < $2
+          AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
+          AND ($4::uuid IS NULL OR l.owner_id = $4::uuid)
+        GROUP BY 1
+        ORDER BY 2 DESC, 1`,
+      [start, end, scope, userId, UNSPECIFIED],
+    )) as Array<{ source: LeadSource | typeof UNSPECIFIED; count: number }>;
+  }
+
+  // ---------------------------------------------------------- needs attention
+
+  /**
+   * What an admin should look at right now, whatever the date range: people
+   * behind on their target, piles of overdue leads, people who have logged
+   * nothing for two days, and transfers nobody has decided. Ranked by how far
+   * past its threshold each one is (`report-rules.ts`).
+   */
+  private async needsAttention(
+    scope: string[] | null,
+    userId: string | null,
+    targets: TargetProgressDto[],
+    now: Date,
+  ): Promise<AttentionItemDto[]> {
+    const [piles, idle, transfers] = await Promise.all([
+      this.overduePiles(scope, userId, istToday(now)),
+      this.idleWorkers(scope, userId, now),
+      this.staleTransfers(scope, userId, now),
+    ]);
+
+    const scored: ScoredAttention[] = [];
+    for (const target of targets) {
+      const pace = targetPace(target, now);
+      if (!isBehindTarget(pace)) continue;
+      scored.push({
+        severity: attentionSeverity(AttentionKind.BEHIND_TARGET, pace.gapPoints),
+        item: {
+          kind: AttentionKind.BEHIND_TARGET,
+          user: target.user,
+          projectName: target.projectName,
+          detail: ATTENTION_DETAIL.BEHIND_TARGET(
+            target.achieved,
+            target.targetCount!,
+            target.targetPeriod === TargetPeriod.MONTHLY ? 'month' : 'week',
+            pace.elapsedPercent,
+          ),
+        },
+      });
+    }
+    for (const pile of piles) {
+      scored.push({
+        severity: attentionSeverity(AttentionKind.OVERDUE_PILE, pile.count),
+        item: {
+          kind: AttentionKind.OVERDUE_PILE,
+          user: { id: pile.user_id, name: pile.name },
+          projectName: pile.project_name,
+          detail: ATTENTION_DETAIL.OVERDUE_PILE(pile.count),
+          leadCount: pile.count,
+        },
+      });
+    }
+    scored.push(...idle, ...transfers);
+
+    return rankAttention(scored);
+  }
+
+  /** Overdue leads per working owner and project, from `ATTENTION_OVERDUE_PILE` up. */
+  private overduePiles(scope: string[] | null, userId: string | null, today: string) {
+    return this.dataSource.query(
+      `SELECT l.owner_id AS user_id, u.name, p.name AS project_name, count(*)::int AS count
+         FROM ${SQL_TABLE.LEADS} l
+         JOIN ${SQL_TABLE.USERS} u ON u.id = l.owner_id AND u.is_active
+         JOIN ${SQL_TABLE.PROJECTS} p ON p.id = l.project_id AND p.status = $1
+         JOIN ${SQL_TABLE.PROJECT_MEMBERS} pm
+           ON pm.project_id = l.project_id AND pm.user_id = l.owner_id AND pm.is_active
+        WHERE l.deleted_at IS NULL
+          AND l.next_follow_up_date < $2
+          AND l.status <> ALL($3::text[])
+          AND ($4::uuid[] IS NULL OR l.project_id = ANY($4::uuid[]))
+          AND ($5::uuid IS NULL OR l.owner_id = $5::uuid)
+        GROUP BY l.owner_id, u.name, l.project_id, p.name
+       HAVING count(*) >= $6`,
+      [
+        ProjectStatus.ACTIVE,
+        today,
+        TERMINAL_STATUSES,
+        scope,
+        userId,
+        BUSINESS_RULE.ATTENTION_OVERDUE_PILE,
+      ],
+    ) as Promise<Array<{ user_id: string; name: string; project_name: string; count: number }>>;
+  }
+
+  /**
+   * Working members — sales persons and moderators who own leads in an active
+   * project — with no entry in scope for `ATTENTION_IDLE_DAYS` India days.
+   * Someone who never logged is counted from the day they joined, so a new
+   * member is not flagged on day one.
+   */
+  private async idleWorkers(
+    scope: string[] | null,
+    userId: string | null,
+    now: Date,
+  ): Promise<ScoredAttention[]> {
+    const rows = (await this.dataSource.query(
+      `SELECT pm.user_id, u.name, array_agg(DISTINCT p.name) AS projects,
+              min(pm.joined_at) AS joined_at,
+              (SELECT max(f.created_at) FROM ${SQL_TABLE.FOLLOW_UPS} f
+                WHERE f.user_id = pm.user_id AND f.deleted_at IS NULL
+                  AND ($2::uuid[] IS NULL OR f.project_id = ANY($2::uuid[]))) AS last_entry_at,
+              (SELECT count(*) FROM ${SQL_TABLE.LEADS} l
+                WHERE l.owner_id = pm.user_id AND l.deleted_at IS NULL
+                  AND l.status <> ALL($5::text[])
+                  AND ($2::uuid[] IS NULL OR l.project_id = ANY($2::uuid[])))::int AS open_leads
+         FROM ${SQL_TABLE.PROJECT_MEMBERS} pm
+         JOIN ${SQL_TABLE.USERS} u ON u.id = pm.user_id AND u.is_active AND u.role = ANY($4::text[])
+         JOIN ${SQL_TABLE.PROJECTS} p ON p.id = pm.project_id AND p.status = $1
+        WHERE pm.is_active
+          AND ($2::uuid[] IS NULL OR pm.project_id = ANY($2::uuid[]))
+          AND ($3::uuid IS NULL OR pm.user_id = $3::uuid)
+          AND EXISTS (
+                SELECT 1 FROM ${SQL_TABLE.LEADS} l
+                 WHERE l.project_id = pm.project_id AND l.owner_id = pm.user_id AND l.deleted_at IS NULL)
+        GROUP BY pm.user_id, u.name`,
+      [
+        ProjectStatus.ACTIVE,
+        scope,
+        userId,
+        [UserRole.SALES_PERSON, UserRole.MODERATOR],
+        TERMINAL_STATUSES,
+      ],
+    )) as Array<{
+      user_id: string;
+      name: string;
+      projects: string[];
+      joined_at: Date;
+      last_entry_at: Date | null;
+      open_leads: number;
+    }>;
+
+    return rows.flatMap((row) => {
+      const days = idleDays(row.last_entry_at, row.joined_at, now);
+      if (days < BUSINESS_RULE.ATTENTION_IDLE_DAYS) return [];
+      return [
+        {
+          severity: attentionSeverity(AttentionKind.IDLE, days),
+          item: {
+            kind: AttentionKind.IDLE,
+            user: { id: row.user_id, name: row.name },
+            projectName: row.projects.length === 1 ? row.projects[0] : null,
+            detail: row.last_entry_at
+              ? ATTENTION_DETAIL.IDLE(days)
+              : ATTENTION_DETAIL.IDLE_NEVER(days),
+            leadCount: row.open_leads,
+          },
+        },
+      ];
+    });
+  }
+
+  /** Pending transfers older than `ATTENTION_STALE_TRANSFER_HOURS`, oldest first. */
+  private async staleTransfers(
+    scope: string[] | null,
+    userId: string | null,
+    now: Date,
+  ): Promise<ScoredAttention[]> {
+    const cutoff = new Date(now.getTime() - BUSINESS_RULE.ATTENTION_STALE_TRANSFER_HOURS * HOUR_MS);
+    const rows = (await this.dataSource.query(
+      `SELECT t.created_at, l.name AS lead_name, p.name AS project_name,
+              fu.id AS from_id, fu.name AS from_name, tu.name AS to_name
+         FROM ${SQL_TABLE.LEAD_TRANSFERS} t
+         JOIN ${SQL_TABLE.LEADS} l ON l.id = t.lead_id AND l.deleted_at IS NULL
+         JOIN ${SQL_TABLE.PROJECTS} p ON p.id = l.project_id
+         JOIN ${SQL_TABLE.USERS} fu ON fu.id = t.from_user_id
+         JOIN ${SQL_TABLE.USERS} tu ON tu.id = t.to_user_id
+        WHERE t.status = $1
+          AND t.created_at < $2
+          AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
+          AND ($4::uuid IS NULL OR $4::uuid IN (t.from_user_id, t.to_user_id))
+        ORDER BY t.created_at
+        LIMIT ${BUSINESS_RULE.ATTENTION_LIST_LIMIT}`,
+      [TransferStatus.PENDING, cutoff, scope, userId],
+    )) as Array<{
+      created_at: Date;
+      lead_name: string;
+      project_name: string;
+      from_id: string;
+      from_name: string;
+      to_name: string;
+    }>;
+
+    return rows.map((row) => {
+      const hours = Math.floor((now.getTime() - row.created_at.getTime()) / HOUR_MS);
+      return {
+        severity: attentionSeverity(AttentionKind.STALE_TRANSFER, hours),
+        item: {
+          kind: AttentionKind.STALE_TRANSFER,
+          user: { id: row.from_id, name: row.from_name },
+          projectName: row.project_name,
+          detail: ATTENTION_DETAIL.STALE_TRANSFER(row.lead_name, row.to_name, hours),
+        },
+      };
+    });
   }
 }
 

@@ -16,7 +16,10 @@ import { isTerminal } from './lead-rules';
  *
  * Invariants the rest of the code keeps, which make this possible:
  *  - `leads.status` and `next_follow_up_date` are the latest entry's;
- *  - `converted_at` is the time of the first entry of the current Converted run.
+ *  - `converted_at` is the time of the first entry of the current Converted run;
+ *  - `last_activity_at` is the latest entry's time, or when the lead was added.
+ *
+ * The deal value and plan are left alone: they describe the client, not one entry.
  */
 @Injectable()
 export class LeadStateService {
@@ -55,7 +58,13 @@ export class LeadStateService {
     await manager.update(
       Lead,
       { id: lead.id },
-      { status, nextFollowUpDate, convertedAt, convertedBy },
+      {
+        status,
+        nextFollowUpDate,
+        convertedAt,
+        convertedBy,
+        lastActivityAt: last?.createdAt ?? lead.createdAt,
+      },
     );
   }
 }

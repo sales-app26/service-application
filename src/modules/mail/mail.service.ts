@@ -105,15 +105,24 @@ const escape = (s: string): string =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
   );
 
+/**
+ * The email in Pronttera's brand: the mark (a PNG the portal serves, since mail clients don't
+ * show SVG), the wordmark, and the app's action blue.
+ */
 function layout(heading: string, body: string, button: string, link: string): string {
   const href = escape(link);
+  const logo = escape(`${new URL(link).origin}/brand/pronttera-mark.png`);
   return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#111">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:16px;padding:32px">
-<tr><td style="font-size:20px;font-weight:700;line-height:1.2"><span style="color:#2a3cff">Pronttera</span> <span style="color:#14b87a">Sales</span></td></tr>
+<tr><td><table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td style="padding-right:12px"><img src="${logo}" width="31" height="40" alt="Pronttera" style="display:block;border:0"></td>
+<td style="font-size:20px;font-weight:700;line-height:1.2"><span style="color:#2a2a2a">Pronttera</span> <span style="color:#0a78b0">Sales</span></td>
+</tr></table></td></tr>
 <tr><td style="padding-top:24px;font-size:22px;font-weight:700">${escape(heading)}</td></tr>
 <tr><td style="padding-top:12px;font-size:15px;line-height:1.5;color:#444">${escape(body)}</td></tr>
-<tr><td style="padding-top:24px"><a href="${href}" style="display:inline-block;background:#2a3cff;color:#fff;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:999px">${escape(button)}</a></td></tr>
-<tr><td style="padding-top:24px;font-size:13px;line-height:1.5;color:#777">The link works once. If it has expired, ask for a new one. If the button doesn't work, open this address:<br><a href="${href}" style="color:#2a3cff;word-break:break-all">${href}</a></td></tr>
+<tr><td style="padding-top:24px"><a href="${href}" style="display:inline-block;background:#0a78b0;color:#fff;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:999px">${escape(button)}</a></td></tr>
+<tr><td style="padding-top:24px;font-size:13px;line-height:1.5;color:#777">The link works once. If it has expired, ask for a new one. If the button doesn't work, open this address:<br><a href="${href}" style="color:#0a78b0;word-break:break-all">${href}</a></td></tr>
+<tr><td style="padding-top:24px;border-top:1px solid #eee;font-size:12px;color:#999">Pronttera Sales · Made by Pronttera</td></tr>
 </table></td></tr></table></body></html>`;
 }

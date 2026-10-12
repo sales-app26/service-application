@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { COMMON_ERROR, ERROR_CODE } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
+import { UserRole } from '../../common/enums';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { InstantRange, istDateSpan, istToday } from '../../common/utils';
 import { ProjectAccessService } from '../access/project-access.service';
@@ -23,6 +24,16 @@ export interface ResolvedRange extends InstantRange {
 @Injectable()
 export class ReportScopeService {
   constructor(private readonly access: ProjectAccessService) {}
+
+  /**
+   * Whether a timeline or summary of `userId` may even name the person: a moderator only
+   * sees people who are, or were, in one of his projects. Everyone else is "not found".
+   */
+  async canSeePerson(actor: AuthenticatedUser, userId: string): Promise<boolean> {
+    if (userId === actor.id || this.access.isSuperAdmin(actor)) return true;
+    if (actor.role !== UserRole.MODERATOR) return false;
+    return this.access.everSharedProject(actor.id, userId);
+  }
 
   async projectScope(actor: AuthenticatedUser, projectId?: string): Promise<string[] | null> {
     if (projectId) {
