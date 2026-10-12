@@ -100,6 +100,10 @@ export class FollowUp {
   })
   gpsAccuracyM: number | null;
 
+  /** SHA-256 of the capture token this visit spent; unique, so one photo session proves one visit. */
+  @Column({ name: 'capture_token_hash', type: PG_TYPE.TEXT, nullable: true, select: false })
+  captureTokenHash: string | null;
+
   /** One-time id from the form. A double tap or retry finds this row. */
   @Column({ name: 'client_request_id', type: PG_TYPE.UUID, nullable: true })
   clientRequestId: string | null;

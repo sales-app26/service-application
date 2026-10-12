@@ -182,6 +182,7 @@ export class LeadsService {
           latitude: proof?.latitude ?? null,
           longitude: proof?.longitude ?? null,
           gpsAccuracyM: proof?.gpsAccuracyM ?? null,
+          captureTokenHash: proof?.captureTokenHash ?? null,
           clientRequestId: dto.clientRequestId,
           createdAt: now,
           updatedAt: now,
@@ -190,10 +191,14 @@ export class LeadsService {
     } catch (error) {
       await this.visitProof.discard(proof);
 
-      if (isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CLIENT_REQUEST)) {
+      if (
+        isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CLIENT_REQUEST) ||
+        this.visitProof.isTokenReuse(error)
+      ) {
         const saved = await this.leadAccess.findReplay(dto.clientRequestId, actor.id);
         if (saved) return this.findDetail(actor, saved.leadId);
       }
+      if (this.visitProof.isTokenReuse(error)) throw this.visitProof.tokenReuseError();
       // Two people adding the same phone at the same moment: the first save
       // wins and the second gets the same message it would have had a second
       // later (PRD §5.5).

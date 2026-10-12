@@ -168,6 +168,7 @@ export const VISIT_ERROR = {
   CAPTURE_TOKEN_REQUIRED: 'Take the photo again before saving.',
   CAPTURE_EXPIRED: `The photo was taken more than ${BUSINESS_RULE.CAPTURE_WINDOW_MINUTES} minutes ago. Take it again.`,
   CAPTURE_INVALID: 'This photo could not be verified. Take it again.',
+  CAPTURE_USED: 'This photo was already used for another visit. Take a new one.',
   PHOTO_INVALID: 'The photo could not be read. Take it again.',
   PHOTO_TOO_LARGE: 'The photo is too large. Take it again.',
   STORAGE_UNAVAILABLE: 'The photo could not be saved. Please retry.',

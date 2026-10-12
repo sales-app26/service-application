@@ -53,6 +53,7 @@ export const DB_CONSTRAINT = {
   LEADS_PROJECT_PHONE: 'leads_project_phone_key',
   LOCATIONS_PROJECT_NAME: 'locations_project_name_key',
   FOLLOW_UPS_CLIENT_REQUEST: 'follow_ups_client_request_id_key',
+  FOLLOW_UPS_CAPTURE_TOKEN: 'follow_ups_capture_token_hash_key',
   LEAD_TRANSFERS_ONE_PENDING: 'lead_transfers_one_pending_per_lead',
   PROJECT_MEMBERS_PROJECT_USER: 'project_members_project_user_key',
   APP_VERSIONS_VERSION: 'app_versions_version_key',

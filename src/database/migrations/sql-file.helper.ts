@@ -22,6 +22,8 @@ export const SQL_FILE = {
   APP_VERSIONS_DOWN: '02_app_versions_down.sql',
   USER_DELETION: '03_user_deletion.sql',
   USER_DELETION_DOWN: '03_user_deletion_down.sql',
+  SINGLE_USE_CAPTURE: '04_single_use_capture.sql',
+  SINGLE_USE_CAPTURE_DOWN: '04_single_use_capture_down.sql',
 } as const;
 
 export const readSqlFile = (fileName: string): string =>

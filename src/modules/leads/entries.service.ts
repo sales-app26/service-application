@@ -155,6 +155,7 @@ export class EntriesService {
           latitude: proof?.latitude ?? null,
           longitude: proof?.longitude ?? null,
           gpsAccuracyM: proof?.gpsAccuracyM ?? null,
+          captureTokenHash: proof?.captureTokenHash ?? null,
           clientRequestId: dto.clientRequestId,
           createdAt: now,
           updatedAt: now,
@@ -168,10 +169,14 @@ export class EntriesService {
       });
     } catch (error) {
       await this.visitProof.discard(proof);
-      if (isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CLIENT_REQUEST)) {
+      if (
+        isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CLIENT_REQUEST) ||
+        this.visitProof.isTokenReuse(error)
+      ) {
         const saved = await this.replayFor(dto.clientRequestId, actor, leadId);
         if (saved) return saved;
       }
+      if (this.visitProof.isTokenReuse(error)) throw this.visitProof.tokenReuseError();
       throw error;
     }
 

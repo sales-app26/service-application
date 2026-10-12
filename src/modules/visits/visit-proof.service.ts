@@ -1,10 +1,12 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 
-import { ERROR_CODE, STORAGE_FOLDER, VISIT_ERROR } from '../../common/constants';
+import { DB_CONSTRAINT, ERROR_CODE, STORAGE_FOLDER, VISIT_ERROR } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
 import { ProjectType } from '../../common/enums';
 import { BusinessException } from '../../common/exceptions/business.exception';
-import { formatIstStamp, istDateOf } from '../../common/utils';
+import { formatIstStamp, istDateOf, isUniqueViolation } from '../../common/utils';
 import { ImageService } from '../media/image.service';
 import { SupabaseStorageClient } from '../supabase/supabase-storage.client';
 import { CaptureTokenService } from './capture-token.service';
@@ -24,6 +26,8 @@ export interface StoredVisitProof {
   latitude: number;
   longitude: number;
   gpsAccuracyM: number;
+  /** Stored on the entry; its unique index makes the capture token single-use. */
+  captureTokenHash: string;
 }
 
 /**
@@ -94,7 +98,21 @@ export class VisitProofService {
       latitude: roundTo(latitude, 6),
       longitude: roundTo(longitude, 6),
       gpsAccuracyM: roundTo(gpsAccuracyM, 2),
+      captureTokenHash: createHash('sha256').update(input.captureToken!).digest('hex'),
     };
+  }
+
+  /**
+   * The entry failed on the single-use index: this capture token already proved
+   * a visit. Call after the client-request replay check, so a retried save of the
+   * same visit still returns the saved entry.
+   */
+  isTokenReuse(error: unknown): boolean {
+    return isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CAPTURE_TOKEN);
+  }
+
+  tokenReuseError(): BusinessException {
+    return new BusinessException(VISIT_ERROR.CAPTURE_USED, ERROR_CODE.CAPTURE_EXPIRED);
   }
 
   async discard(proof: StoredVisitProof | null): Promise<void> {
