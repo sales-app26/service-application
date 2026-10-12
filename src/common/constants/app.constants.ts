@@ -82,6 +82,7 @@ export const SUCCESS_MESSAGE = {
   USER_CREATED: 'User created. An email has been sent to set the password.',
   USER_DEACTIVATED: 'User deactivated.',
   USER_REACTIVATED: 'User reactivated.',
+  RESET_LINK_CREATED: 'Reset link ready. Share it only with this person.',
   PROJECT_CLOSED: 'Project closed. It is now read-only.',
   PROJECT_REOPENED: 'Project reopened.',
   MEMBER_ADDED: 'Member added to the project.',

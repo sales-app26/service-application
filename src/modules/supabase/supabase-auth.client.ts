@@ -111,6 +111,23 @@ export class SupabaseAuthClient {
     });
   }
 
+  /**
+   * A password-reset link for an admin to share by hand (WhatsApp, SMS…). Nothing is emailed.
+   * Single use; it expires with Supabase's email OTP expiry.
+   */
+  async createRecoveryLink(email: string): Promise<string> {
+    if (!this.appUrl) {
+      throw new BusinessException(
+        'APP_URL is not set on the server, so a link cannot be made.',
+        ERROR_CODE.INTEGRATION_ERROR,
+        undefined,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const { hashedToken } = await this.generateLink('recovery', email);
+    return this.linkFor('recovery', hashedToken);
+  }
+
   /** Trades the one-time token from our own email link for a session (single use). */
   verifyTokenHash(tokenHash: string, type: AuthMailKind): Promise<SupabaseSession> {
     return this.call<SupabaseSession>('POST', '/verify', {

@@ -281,6 +281,19 @@ export class UsersService {
     return UserDto.from(saved, true);
   }
 
+  /** A reset link the admin shares by hand: for people who can't find, or never got, the email. */
+  async resetLink(actor: AuthenticatedUser, userId: string): Promise<{ link: string }> {
+    const user = await this.findManageableOrFail(actor, userId);
+    if (!user.isActive) throw new ConflictBusinessException(USER_ERROR.RESET_LINK_INACTIVE);
+    try {
+      const link = await this.authClient.createRecoveryLink(user.email);
+      this.logger.log(`Reset link for ${user.id} created by ${actor.id}`);
+      return { link };
+    } catch (error) {
+      throw SupabaseAuthClient.toBusinessException(error);
+    }
+  }
+
   // ------------------------------------------------------------------ helpers
 
   async findOrFail(userId: string): Promise<User> {

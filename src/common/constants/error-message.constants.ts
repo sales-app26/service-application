@@ -74,6 +74,7 @@ export const USER_ERROR = {
   ALREADY_INACTIVE: 'This user is already deactivated.',
   SAME_ROLE: 'The user already has this role.',
   SAME_EMAIL: 'The user already has this email.',
+  RESET_LINK_INACTIVE: 'Reactivate this person first, then make a reset link.',
 } as const;
 
 export const PROJECT_ERROR = {

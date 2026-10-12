@@ -111,6 +111,21 @@ export class UsersController {
     return this.usersService.deactivate(actor, params.id);
   }
 
+  @Post(`${ROUTE.ID_PARAM}/reset-link`)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(SUCCESS_MESSAGE.RESET_LINK_CREATED)
+  @ApiOperation({
+    summary: 'Make a password-reset link to share by hand',
+    description:
+      'For a person the caller manages (moderator: their sales persons). Nothing is emailed; the admin shares the link (WhatsApp, SMS…). Single use, and it expires like an emailed link. The user must be active.',
+  })
+  resetLink(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+  ): Promise<{ link: string }> {
+    return this.usersService.resetLink(actor, params.id);
+  }
+
   @Post(`${ROUTE.ID_PARAM}/reactivate`)
   @HttpCode(HttpStatus.OK)
   @ResponseMessage(SUCCESS_MESSAGE.USER_REACTIVATED)
