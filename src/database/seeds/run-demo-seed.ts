@@ -154,6 +154,7 @@ async function seed(): Promise<void> {
             longitude,
             accuracyM: accuracy,
             takenAt: formatIstStamp(createdAt),
+            at: createdAt,
             personName: nameOf(userId),
           });
           await storage.upload(photoPath, photo.buffer, photo.contentType);

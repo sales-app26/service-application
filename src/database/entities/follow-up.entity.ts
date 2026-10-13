@@ -111,6 +111,10 @@ export class FollowUp {
   })
   gpsAccuracyM: number | null;
 
+  /** Where the visit photo was taken, from OpenStreetMap (e.g. `Wanowrie Road, Wanowrie, Pune 411040`). */
+  @Column({ name: 'place_name', type: PG_TYPE.TEXT, nullable: true })
+  placeName: string | null;
+
   /** SHA-256 of the capture token this visit spent; unique, so one photo session proves one visit. */
   @Column({ name: 'capture_token_hash', type: PG_TYPE.TEXT, nullable: true, select: false })
   captureTokenHash: string | null;

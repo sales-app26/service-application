@@ -1,7 +1,8 @@
 /**
  * The real API on an in-memory PostgreSQL and a fake Supabase, with a few people and
  * projects already in it. For driving the front end against the real code (the portal's
- * `npm run test:e2e:real`) without touching the hosted Supabase project.
+ * `npm run test:e2e:real`) without touching the hosted Supabase project. Place names come
+ * from the harness's local stand-in for OpenStreetMap, so nothing reaches the internet.
  *
  *   npx ts-node -r tsconfig-paths/register test/support/dev-server.ts
  *

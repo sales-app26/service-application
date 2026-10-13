@@ -195,6 +195,46 @@ export const visitConfig = registerAs(CONFIG_NAMESPACE.VISIT, (): VisitConfig =>
 }));
 
 // ---------------------------------------------------------------------------
+// Place names (OpenStreetMap)
+// ---------------------------------------------------------------------------
+
+export interface GeoConfig {
+  /** FALSE turns place names off: visits save without one, the lookup answers null. */
+  enabled: boolean;
+  /**
+   * Who to contact about our traffic, sent in the User-Agent as Nominatim's usage
+   * policy asks (an email or a web page). Optional, but set it in production.
+   */
+  contact: string;
+  /** Nominatim (primary). Overridden by the tests so they never touch the internet. */
+  nominatimUrl: string;
+  /** Photon by komoot (fallback). */
+  photonUrl: string;
+  /** The whole lookup, queue wait and fallback included, gives up after this. */
+  timeoutMs: number;
+  /** At most one request per this many milliseconds to each service (Nominatim: 1/s). */
+  minIntervalMs: number;
+  /** In-memory cache of looked-up places, keyed by position rounded to ~11 m. */
+  cacheSize: number;
+  cacheTtlMs: number;
+}
+
+export const geoConfig = registerAs(CONFIG_NAMESPACE.GEO, (): GeoConfig => ({
+  enabled: toBoolean(process.env[ENV.GEOCODER_ENABLED], true),
+  contact: (process.env[ENV.GEOCODER_CONTACT] ?? '').trim(),
+  nominatimUrl: withoutTrailingSlash(
+    process.env[ENV.GEOCODER_NOMINATIM_URL] || 'https://nominatim.openstreetmap.org',
+  ),
+  photonUrl: withoutTrailingSlash(
+    process.env[ENV.GEOCODER_PHOTON_URL] || 'https://photon.komoot.io',
+  ),
+  timeoutMs: toNumber(process.env[ENV.GEOCODER_TIMEOUT_MS], 4_000),
+  minIntervalMs: BUSINESS_RULE.GEOCODER_MIN_INTERVAL_MS,
+  cacheSize: BUSINESS_RULE.GEOCODER_CACHE_SIZE,
+  cacheTtlMs: BUSINESS_RULE.GEOCODER_CACHE_TTL_MS,
+}));
+
+// ---------------------------------------------------------------------------
 // Swagger
 // ---------------------------------------------------------------------------
 
@@ -220,4 +260,5 @@ export const configurations = [
   visitConfig,
   swaggerConfig,
   mailConfig,
+  geoConfig,
 ];

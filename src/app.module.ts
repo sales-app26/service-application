@@ -16,6 +16,7 @@ import { AccessModule } from './modules/access/access.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthGuard } from './modules/auth/guards/auth.guard';
 import { CommentsModule } from './modules/comments/comments.module';
+import { GeoModule } from './modules/geo/geo.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { LeaveLookupModule } from './modules/leaves/leave-lookup.module';
@@ -81,6 +82,7 @@ const MILLISECONDS_PER_SECOND = 1_000;
     LeaveLookupModule,
     NotificationSenderModule,
     MediaModule,
+    GeoModule,
 
     AuthModule,
     UsersModule,

@@ -23,6 +23,7 @@ export const SWAGGER_TAG = {
   NOTIFICATIONS: 'Notifications',
   TEAM: 'Team',
   TEMPLATES: 'Message templates',
+  GEO: 'Places',
 } as const;
 
 export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
@@ -48,6 +49,8 @@ export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
   [SWAGGER_TAG.NOTIFICATIONS]: 'The signed-in person’s in-app notifications. Private to them.',
   [SWAGGER_TAG.TEAM]: 'The team roster and the project leaderboard.',
   [SWAGGER_TAG.TEMPLATES]: 'Canned messages for a project, with {client}, {rep} and {business}.',
+  [SWAGGER_TAG.GEO]:
+    'The area a position is in, from OpenStreetMap (Nominatim, Photon as a fallback). Free, cached, at most one upstream request a second.',
 };
 
 export const SWAGGER_RESPONSE = {

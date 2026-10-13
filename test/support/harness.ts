@@ -4,11 +4,12 @@ import { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 
 import { PGlite } from '@electric-sql/pglite';
-import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
+import { PGLiteSocketHandler, PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { ConsoleLogger, INestApplication } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 
+import { FakeGeocoder } from './fake-geocoder';
 import { FakeSupabase } from './fake-supabase';
 
 const JWT_SECRET = 'e2e-supabase-jwt-secret-at-least-32-characters-long';
@@ -19,6 +20,8 @@ export interface Harness {
   baseUrl: string;
   db: PGlite;
   supabase: FakeSupabase;
+  /** OpenStreetMap's place lookups, faked: no test reaches the internet. */
+  geocoder: FakeGeocoder;
   superAdminId: string;
   close(): Promise<void>;
 }
@@ -33,6 +36,7 @@ export interface Harness {
  * transaction (it would hang here, and starve a busy pool in production).
  */
 export const startHarness = async (): Promise<Harness> => {
+  serialiseSocketChunks();
   const db = await PGlite.create();
   for (const file of [
     '01_sales_schema.sql',
@@ -41,6 +45,7 @@ export const startHarness = async (): Promise<Harness> => {
     '04_single_use_capture.sql',
     '05_sales_insights.sql',
     '06_team_collaboration.sql',
+    '07_visit_place.sql',
   ]) {
     await db.exec(readFileSync(join(__dirname, '../../src/database/sql', file), 'utf8'));
   }
@@ -51,6 +56,8 @@ export const startHarness = async (): Promise<Harness> => {
 
   const supabase = new FakeSupabase(JWT_SECRET, BUCKET);
   await supabase.start();
+  const geocoder = new FakeGeocoder();
+  await geocoder.start();
 
   const superAdminId = randomUUID();
   supabase.addUser('owner@pronttera.in', 'super-secret-1', superAdminId);
@@ -77,9 +84,16 @@ export const startHarness = async (): Promise<Harness> => {
     BREVO_API_KEY: 'e2e-brevo-key',
     BREVO_API_URL: supabase.url,
     MAIL_FROM_EMAIL: 'sales@example.com',
+    // Place lookups go to the fake, never to OpenStreetMap, whatever .env holds.
+    GEOCODER_ENABLED: 'true',
+    GEOCODER_NOMINATIM_URL: geocoder.nominatimUrl,
+    GEOCODER_PHOTON_URL: geocoder.photonUrl,
+    GEOCODER_CONTACT: 'e2e@example.com',
+    GEOCODER_TIMEOUT_MS: '1500',
   });
 
   const stopBackends = async (): Promise<void> => {
+    await geocoder.stop();
     await supabase.stop();
     await pgServer.stop();
     await db.close();
@@ -115,6 +129,7 @@ export const startHarness = async (): Promise<Harness> => {
       baseUrl: `http://127.0.0.1:${port}`,
       db,
       supabase,
+      geocoder,
       superAdminId,
       close: async () => {
         await (app as INestApplication).close();
@@ -126,6 +141,32 @@ export const startHarness = async (): Promise<Harness> => {
     await stopBackends();
     throw error;
   }
+};
+
+/**
+ * pglite-socket parses each TCP chunk in its own `setImmediate` without waiting for the
+ * previous chunk to finish, and both read one shared reassembly buffer. When a query's
+ * messages arrive in two chunks close together (the error-and-rollback path is the usual
+ * one), the halves are processed twice or out of order and the client gets a reply it
+ * never asked for ("Received unexpected parseComplete message"). Real PostgreSQL reads a
+ * connection in order; so do we, by running one chunk at a time per connection.
+ */
+const serialiseSocketChunks = (): void => {
+  const proto = PGLiteSocketHandler.prototype as unknown as {
+    handleData(data: Buffer): Promise<number>;
+    inOrder?: true;
+  };
+  if (proto.inOrder) return;
+  const handleData = proto.handleData;
+  const previous = new WeakMap<object, Promise<unknown>>();
+  proto.handleData = function (this: object, data: Buffer): Promise<number> {
+    const next = (previous.get(this) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => handleData.call(this, data));
+    previous.set(this, next);
+    return next;
+  };
+  proto.inOrder = true;
 };
 
 /** Keeps expected 4xx warnings out of the test output; errors still print. */

@@ -210,6 +210,7 @@ export class LeadsService {
           latitude: proof?.latitude ?? null,
           longitude: proof?.longitude ?? null,
           gpsAccuracyM: proof?.gpsAccuracyM ?? null,
+          placeName: proof?.placeName ?? null,
           captureTokenHash: proof?.captureTokenHash ?? null,
           clientRequestId: dto.clientRequestId,
           createdAt: now,

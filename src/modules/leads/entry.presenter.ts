@@ -71,6 +71,7 @@ export class EntryPresenter {
       latitude: entry.latitude,
       longitude: entry.longitude,
       gpsAccuracyM: entry.gpsAccuracyM,
+      placeName: entry.placeName ?? null,
       lowAccuracy:
         entry.gpsAccuracyM !== null && entry.gpsAccuracyM > BUSINESS_RULE.LOW_ACCURACY_METRES,
       user: { id: entry.user.id, name: entry.user.name },

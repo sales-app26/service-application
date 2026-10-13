@@ -79,6 +79,20 @@ export const envValidationSchema = Joi.object({
   [ENV.CAPTURE_TOKEN_SECRET]: Joi.string().min(MIN_SECRET_LENGTH).required(),
   [ENV.SIGNED_URL_TTL_SECONDS]: Joi.number().integer().min(30).max(3600).default(600),
 
+  // ------------------------------------------------- place names (OpenStreetMap)
+  // Free and keyless. A failed lookup never fails a save; it only leaves the place out.
+  [ENV.GEOCODER_ENABLED]: Joi.boolean().default(true),
+  [ENV.GEOCODER_CONTACT]: Joi.string().max(200).allow('').default(''),
+  [ENV.GEOCODER_NOMINATIM_URL]: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .allow('')
+    .default(''),
+  [ENV.GEOCODER_PHOTON_URL]: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .allow('')
+    .default(''),
+  [ENV.GEOCODER_TIMEOUT_MS]: Joi.number().integer().min(500).max(15_000).default(4_000),
+
   // -------------------------------------------------------------------- swagger
   [ENV.SWAGGER_ENABLED]: Joi.boolean().default(true),
   [ENV.SWAGGER_PATH]: Joi.string().default('docs'),

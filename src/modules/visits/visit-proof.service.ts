@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../../common/decorators';
 import { ProjectType } from '../../common/enums';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { formatIstStamp, istDateOf, isUniqueViolation } from '../../common/utils';
+import { ReverseGeocoder } from '../geo/reverse-geocoder.service';
 import { ImageService } from '../media/image.service';
 import { SupabaseStorageClient } from '../supabase/supabase-storage.client';
 import { CaptureTokenService } from './capture-token.service';
@@ -26,6 +27,8 @@ export interface StoredVisitProof {
   latitude: number;
   longitude: number;
   gpsAccuracyM: number;
+  /** Where the photo was taken, from OpenStreetMap. Null when unknown or the lookup was slow. */
+  placeName: string | null;
   /** Stored on the entry; its unique index makes the capture token single-use. */
   captureTokenHash: string;
 }
@@ -47,6 +50,7 @@ export class VisitProofService {
     private readonly captureTokens: CaptureTokenService,
     private readonly images: ImageService,
     private readonly storage: SupabaseStorageClient,
+    private readonly geocoder: ReverseGeocoder,
   ) {}
 
   requiresProof(projectType: ProjectType): boolean {
@@ -69,9 +73,13 @@ export class VisitProofService {
   }
 
   /**
-   * Stamps latitude, longitude, accuracy, IST date and time and the person's
-   * name onto the photo and uploads it under the entry's id. Call `validate`
-   * first.
+   * Stamps the place, latitude, longitude, accuracy, IST date and time and the
+   * person's name onto the photo and uploads it under the entry's id. Call
+   * `validate` first.
+   *
+   * The place is looked up while the photo is decoded and scaled. The lookup
+   * never fails and gives up after a few seconds, so a slow or unreachable map
+   * service only leaves the place off; the visit still saves.
    */
   async store(
     input: VisitProofInput,
@@ -81,12 +89,20 @@ export class VisitProofService {
     const longitude = input.longitude!;
     const gpsAccuracyM = input.gpsAccuracyM!;
 
-    const processed = await this.images.processVisitPhoto(input.photo!.buffer, {
+    const [prepared, place] = await Promise.all([
+      this.images.prepareVisitPhoto(input.photo!.buffer),
+      this.geocoder.reverse(latitude, longitude),
+    ]);
+    const placeName = place?.label ?? null;
+
+    const processed = await this.images.stampVisitPhoto(prepared, {
       latitude,
       longitude,
       accuracyM: gpsAccuracyM,
       takenAt: formatIstStamp(context.createdAt),
+      at: context.createdAt,
       personName: context.personName,
+      place: placeName,
     });
 
     const month = istDateOf(context.createdAt).slice(0, 7);
@@ -98,6 +114,7 @@ export class VisitProofService {
       latitude: roundTo(latitude, 6),
       longitude: roundTo(longitude, 6),
       gpsAccuracyM: roundTo(gpsAccuracyM, 2),
+      placeName,
       captureTokenHash: createHash('sha256').update(input.captureToken!).digest('hex'),
     };
   }

@@ -46,7 +46,9 @@ next action.
   id returns the first result instead of saving twice.
 - **Door-to-door follow-ups** need \`photo\` (multipart), \`latitude\`, \`longitude\`,
   \`gpsAccuracyM\` and a \`captureToken\` from \`POST /visits/capture-token\` issued at most
-  10 minutes earlier.
+  10 minutes earlier. The server looks up the place on OpenStreetMap (free, cached, never
+  blocking the save), stamps it with the position and time onto the photo, writes the position
+  into the photo's EXIF and returns it as \`placeName\`.
 - **Nothing is hard-deleted** except by the Super Admin, and then only softly.
 `;
 

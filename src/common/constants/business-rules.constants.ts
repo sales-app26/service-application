@@ -36,6 +36,17 @@ export const BUSINESS_RULE = {
   LOW_ACCURACY_METRES: 100,
   /** A phone reporting more than this is not reporting a position at all. */
   MAX_GPS_ACCURACY_METRES: 100_000,
+  /** Nominatim's usage policy: at most one request a second, from the whole service. */
+  GEOCODER_MIN_INTERVAL_MS: 1_000,
+  /** Looked-up places kept in memory, keyed by position rounded to 4 decimals (~11 m). */
+  GEOCODER_CACHE_SIZE: 5_000,
+  GEOCODER_CACHE_TTL_MS: 7 * 24 * 60 * 60 * 1_000,
+  /** Decimal places a position is rounded to before it is looked up (~11 m). */
+  GEOCODER_ROUND_DECIMALS: 4,
+  /** "Use my location" and the camera's "Near …": lookups per person per minute. */
+  GEO_LOOKUPS_PER_MINUTE: 20,
+  /** The stored place name. */
+  PLACE_NAME_MAX_LENGTH: 200,
   /** Raw camera upload ceiling; the phone compresses before sending (VP-7). */
   VISIT_PHOTO_MAX_BYTES: 8 * 1024 * 1024,
   /** Stored photo: longest edge and JPEG quality steps toward ~200–300 KB. */

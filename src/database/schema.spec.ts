@@ -651,3 +651,108 @@ describe('06_team_collaboration.sql', () => {
     expect(rows).toEqual([]);
   });
 });
+
+describe('07_visit_place.sql', () => {
+  let db: PGlite;
+  const seller = randomUUID();
+  const project = randomUUID();
+  const location = randomUUID();
+  const lead = randomUUID();
+
+  const rejects = (promise: Promise<unknown>, pattern: RegExp) =>
+    expect(promise).rejects.toThrow(pattern);
+
+  const insertEntry = (placeName: string | null, withPhoto: boolean) =>
+    db.query(
+      `INSERT INTO follow_ups (id, lead_id, project_id, user_id, entry_type, status, note,
+                               photo_path, latitude, longitude, gps_accuracy_m, place_name)
+       VALUES ($1, $2, $3, $4, 'follow_up', 'contacted', 'Visited the shop',
+               $5, $6, $7, $8, $9)`,
+      [
+        randomUUID(),
+        lead,
+        project,
+        seller,
+        withPhoto ? `visits/${project}/2026-10/${randomUUID()}.jpg` : null,
+        withPhoto ? 18.4966 : null,
+        withPhoto ? 73.8993 : null,
+        withPhoto ? 12 : null,
+        placeName,
+      ],
+    );
+
+  beforeAll(async () => {
+    db = new PGlite();
+    for (const file of [
+      SQL_FILE.SALES_SCHEMA,
+      SQL_FILE.USER_DELETION,
+      SQL_FILE.SINGLE_USE_CAPTURE,
+      SQL_FILE.SALES_INSIGHTS,
+      SQL_FILE.TEAM_COLLABORATION,
+    ]) {
+      await db.exec(readSqlFile(file));
+    }
+    await db.exec('SET search_path TO sales');
+    await db.query(
+      `INSERT INTO users (id, name, email, role) VALUES ($1, 'Seller', 'seller@x.in', 'sales_person')`,
+      [seller],
+    );
+    await db.query(
+      `INSERT INTO projects (id, name, type, start_date, created_by) VALUES ($1, 'Pune', 'door_to_door', '2026-10-01', $2)`,
+      [project, seller],
+    );
+    await db.query(`INSERT INTO locations (id, project_id, name) VALUES ($1, $2, 'Wanowrie')`, [
+      location,
+      project,
+    ]);
+    await db.query(`INSERT INTO project_members (project_id, user_id) VALUES ($1, $2)`, [
+      project,
+      seller,
+    ]);
+    await db.query(
+      `INSERT INTO leads (id, project_id, owner_id, name, phone, location_id) VALUES ($1, $2, $3, 'Client', '9000000001', $4)`,
+      [lead, project, seller, location],
+    );
+    // A visit saved before the column existed.
+    await db.query(
+      `INSERT INTO follow_ups (id, lead_id, project_id, user_id, entry_type, status, note,
+                               photo_path, latitude, longitude, gps_accuracy_m)
+       VALUES ($1, $2, $3, $4, 'follow_up', 'contacted', 'Old visit', 'visits/old.jpg', 18.5, 73.9, 20)`,
+      [randomUUID(), lead, project, seller],
+    );
+    await db.exec(readSqlFile(SQL_FILE.VISIT_PLACE));
+  }, 30_000);
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('leaves earlier visits without a place, and can run again', async () => {
+    const { rows } = await db.query<{ place_name: string | null }>(
+      `SELECT place_name FROM follow_ups WHERE note = 'Old visit'`,
+    );
+    expect(rows).toEqual([{ place_name: null }]);
+    await expect(db.exec(readSqlFile(SQL_FILE.VISIT_PLACE))).resolves.toBeDefined();
+  });
+
+  it('stores a place next to a visit photo, and allows a visit without one', async () => {
+    await expect(insertEntry('Wanowrie Road, Wanowrie, Pune 411040', true)).resolves.toBeDefined();
+    await expect(insertEntry(null, true)).resolves.toBeDefined();
+    await expect(insertEntry(null, false)).resolves.toBeDefined();
+  });
+
+  it('never stores a place without a photo, a blank one, or an essay', async () => {
+    await rejects(insertEntry('Wanowrie', false), /follow_ups_place_needs_photo/);
+    await rejects(insertEntry('   ', true), /follow_ups_place_name_length/);
+    await rejects(insertEntry('x'.repeat(201), true), /follow_ups_place_name_length/);
+  });
+
+  it('reverts cleanly', async () => {
+    await db.exec(readSqlFile(SQL_FILE.VISIT_PLACE_DOWN));
+    const { rows } = await db.query(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'sales' AND table_name = 'follow_ups' AND column_name = 'place_name'`,
+    );
+    expect(rows).toEqual([]);
+  });
+});

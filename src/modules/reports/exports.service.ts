@@ -145,7 +145,7 @@ export class ExportsService {
     return { fileName: `leads_${filter.from}_${filter.to}.csv`, content: Buffer.from(csv, 'utf8') };
   }
 
-  /** Every entry in the range, with latitude, longitude, accuracy and a photo link. */
+  /** Every entry in the range, with the visit place, latitude, longitude, accuracy and a photo link. */
   async entries(actor: AuthenticatedUser, filter: ExportFilterDto): Promise<CsvFile> {
     const { range, projectIds } = await this.prepare(actor, filter);
 
@@ -153,7 +153,7 @@ export class ExportsService {
       `SELECT f.id, f.created_at, f.updated_at, p.name AS project, l.name AS lead, l.business_name, l.phone,
               u.name AS logged_by, f.entry_type, f.status, f.reason, f.note,
               f.next_follow_up_date::text AS next_follow_up_date,
-              loc.name AS location, f.latitude, f.longitude, f.gps_accuracy_m,
+              loc.name AS location, f.place_name, f.latitude, f.longitude, f.gps_accuracy_m,
               (f.photo_path IS NOT NULL) AS has_photo
          FROM ${SQL_TABLE.FOLLOW_UPS} f
          JOIN ${SQL_TABLE.LEADS} l ON l.id = f.lead_id AND l.deleted_at IS NULL
@@ -182,6 +182,7 @@ export class ExportsService {
       note: string | null;
       next_follow_up_date: string | null;
       location: string | null;
+      place_name: string | null;
       latitude: string | null;
       longitude: string | null;
       gps_accuracy_m: string | null;
@@ -204,6 +205,7 @@ export class ExportsService {
         'Note',
         'Next follow-up',
         'Location',
+        'Visit place',
         'Latitude',
         'Longitude',
         'Location accurate to (m)',
@@ -227,6 +229,7 @@ export class ExportsService {
           row.note,
           row.next_follow_up_date,
           row.location,
+          row.place_name,
           row.latitude === null ? null : Number(row.latitude),
           row.longitude === null ? null : Number(row.longitude),
           accuracy,

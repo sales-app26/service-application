@@ -18,6 +18,7 @@ export const ROUTE = {
   NOTIFICATIONS: 'notifications',
   TEMPLATES: 'templates',
   TEAM: 'team',
+  GEO: 'geo',
   ID_PARAM: ':id',
 } as const;
 

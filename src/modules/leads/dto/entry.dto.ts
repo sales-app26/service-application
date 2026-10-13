@@ -93,6 +93,15 @@ export class EntryDto {
   @ApiPropertyOptional({ nullable: true, type: Number, example: 12 })
   gpsAccuracyM: number | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    description:
+      'Where the visit photo was taken, looked up from OpenStreetMap when it was saved. Null when unknown.',
+    example: 'Wanowrie Road, Wanowrie, Pune 411040',
+  })
+  placeName: string | null;
+
   @ApiProperty({
     description: 'Accuracy worse than 100 m — shown as "Low accuracy", never rejected.',
   })

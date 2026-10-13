@@ -91,7 +91,7 @@ class ImportLeadsFormDto extends ImportLeadsDto {
 }
 
 const DOOR_TO_DOOR_NOTE = [
-  '**Door-to-door projects** need, as `multipart/form-data`: `photo` (one live camera photo), `latitude`, `longitude`, `gpsAccuracyM` read at capture, and the `captureToken` from `POST /visits/capture-token` (at most 10 minutes old). Missing any → `422 VISIT_PROOF_REQUIRED`. The server stamps coordinates, date, time and name onto the photo and sets the visit time itself.',
+  '**Door-to-door projects** need, as `multipart/form-data`: `photo` (one live camera photo), `latitude`, `longitude`, `gpsAccuracyM` read at capture, and the `captureToken` from `POST /visits/capture-token` (at most 10 minutes old). Missing any → `422 VISIT_PROOF_REQUIRED`. The server looks up the place on OpenStreetMap (never blocking the save), stamps the place, coordinates, date, time and name onto the photo, writes the position into its EXIF, and sets the visit time itself.',
   '',
   '**Online projects** take JSON; photo and GPS are not stored.',
   '',

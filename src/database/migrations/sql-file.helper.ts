@@ -28,6 +28,8 @@ export const SQL_FILE = {
   SALES_INSIGHTS_DOWN: '05_sales_insights_down.sql',
   TEAM_COLLABORATION: '06_team_collaboration.sql',
   TEAM_COLLABORATION_DOWN: '06_team_collaboration_down.sql',
+  VISIT_PLACE: '07_visit_place.sql',
+  VISIT_PLACE_DOWN: '07_visit_place_down.sql',
 } as const;
 
 export const readSqlFile = (fileName: string): string =>
