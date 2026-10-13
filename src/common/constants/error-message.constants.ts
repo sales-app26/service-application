@@ -206,6 +206,7 @@ export const IMPORT_ERROR = {
 } as const;
 
 export const LEAD_ERROR = {
+  LEADS_NOT_IN_PROJECT: 'Some of these leads aren’t in this campaign, or were already deleted.',
   NOT_FOUND: 'We couldn’t find this lead.',
   INVALID_PHONE: 'Enter a 10-digit Indian mobile number.',
   DUPLICATE_OWN: 'You already have this lead.',

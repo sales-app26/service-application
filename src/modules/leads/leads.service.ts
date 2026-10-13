@@ -49,6 +49,8 @@ import { TransferRejectionsService } from '../transfers/transfer-rejections.serv
 import { StoredVisitProof, VisitProofService } from '../visits/visit-proof.service';
 import { EntryDto, ListEntriesQueryDto } from './dto/entry.dto';
 import {
+  BulkDeleteLeadsDto,
+  BulkDeleteResultDto,
   CreateLeadDto,
   LeadDetailDto,
   LeadPermissionsDto,
@@ -523,6 +525,42 @@ export class LeadsService {
         actor.id,
         AUTO_REJECT_REASON.LEAD_DELETED,
       );
+    });
+  }
+
+  /**
+   * Deletes several leads of one campaign at once (Super Admin), the same soft delete as one:
+   * hidden everywhere, phones free to add again, pending handovers rejected, wins no longer
+   * counted. All or nothing: if any lead isn't a live lead of this campaign, nothing changes.
+   */
+  async removeMany(
+    actor: AuthenticatedUser,
+    projectId: string,
+    dto: BulkDeleteLeadsDto,
+  ): Promise<BulkDeleteResultDto> {
+    return this.dataSource.transaction(async (manager) => {
+      const leads = await manager
+        .getRepository(Lead)
+        .createQueryBuilder('l')
+        .setLock('pessimistic_write')
+        .where('l.id IN (:...leadIds)', { leadIds: dto.leadIds })
+        .andWhere('l.project_id = :projectId', { projectId })
+        .andWhere('l.deleted_at IS NULL')
+        .orderBy('l.id')
+        .getMany();
+      if (leads.length !== dto.leadIds.length) {
+        throw new NotFoundBusinessException(LEAD_ERROR.LEADS_NOT_IN_PROJECT);
+      }
+
+      const ids = leads.map((lead) => lead.id);
+      await manager.update(Lead, { id: In(ids) }, { deletedAt: new Date() });
+      await this.transferRejections.rejectPending(
+        manager,
+        { leadIds: ids },
+        actor.id,
+        AUTO_REJECT_REASON.LEAD_DELETED,
+      );
+      return { deleted: ids.length };
     });
   }
 

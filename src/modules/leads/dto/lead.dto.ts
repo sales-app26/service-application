@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsIn,
@@ -438,4 +442,19 @@ export class ListLeadsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsIn(LEAD_SORT)
   sort?: LeadSort;
+}
+
+export class BulkDeleteLeadsDto {
+  @ApiProperty({ type: [String], format: 'uuid', maxItems: BUSINESS_RULE.BULK_DELETE_MAX_LEADS })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(BUSINESS_RULE.BULK_DELETE_MAX_LEADS)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  leadIds: string[];
+}
+
+export class BulkDeleteResultDto {
+  @ApiProperty({ example: 3 })
+  deleted: number;
 }

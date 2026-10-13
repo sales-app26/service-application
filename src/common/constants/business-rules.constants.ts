@@ -60,6 +60,7 @@ export const BUSINESS_RULE = {
   EXPORT_MAX_DAYS: 92,
   /** Bulk reassignment of a departed person's leads, per request. */
   BULK_REASSIGN_MAX_LEADS: 500,
+  BULK_DELETE_MAX_LEADS: 500,
   /** One CSV import: rows (not counting the header) and file size. */
   IMPORT_MAX_ROWS: 1000,
   IMPORT_MAX_BYTES: 1024 * 1024,

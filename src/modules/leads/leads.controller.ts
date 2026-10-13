@@ -45,6 +45,8 @@ import { UserRole } from '../../common/enums';
 import { ChangeStatusDto, EntryDto, ListEntriesQueryDto, LogFollowUpDto } from './dto/entry.dto';
 import { EntrySaveResultDto } from './dto/entry-result.dto';
 import {
+  BulkDeleteLeadsDto,
+  BulkDeleteResultDto,
   CreateLeadDto,
   LeadDetailDto,
   LeadSummaryDto,
@@ -233,6 +235,24 @@ export class LeadsController {
   ): Promise<null> {
     await this.leadsService.remove(actor, params.id);
     return null;
+  }
+
+  @Post(`${ROUTE.PROJECTS}/${ROUTE.ID_PARAM}/${ROUTE.LEADS}/delete`)
+  @Roles(UserRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(SUCCESS_MESSAGE.LEADS_DELETED)
+  @ApiOperation({
+    summary: 'Delete several leads of a campaign (Super Admin)',
+    description:
+      'The same soft delete as one lead, for a selection. All or nothing: every id must be a live lead of this campaign.',
+  })
+  @ApiOkEnvelope(BulkDeleteResultDto)
+  removeMany(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+    @Body() dto: BulkDeleteLeadsDto,
+  ): Promise<BulkDeleteResultDto> {
+    return this.leadsService.removeMany(actor, params.id, dto);
   }
 
   @Post(`${ROUTE.LEADS}/${ROUTE.ID_PARAM}/follow-ups`)

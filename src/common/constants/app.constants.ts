@@ -109,6 +109,7 @@ export const SUCCESS_MESSAGE = {
   TRANSFER_APPROVED: 'Handover approved.',
   TRANSFER_REJECTED: 'Handover rejected.',
   LEADS_REASSIGNED: 'Leads assigned.',
+  LEADS_DELETED: 'Leads deleted.',
   LEAVE_SAVED: 'Leave saved.',
   LEAVE_CANCELLED: 'Leave cancelled.',
   BACKUP_UPDATED: 'Backup updated.',
