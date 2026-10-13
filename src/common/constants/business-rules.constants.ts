@@ -72,6 +72,13 @@ export const BUSINESS_RULE = {
   /** Deal value in rupees per month: a whole number up to 10 crore. */
   DEAL_VALUE_MAX: 100_000_000,
   PLAN_MAX_LENGTH: 80,
+  /** How long a deal runs, in months (`leads_deal_tenure_valid`). */
+  DEAL_TENURES: [1, 3, 6, 12] as readonly number[],
+  /** A rupee discount is off the whole deal: at most a year at the highest price. */
+  DISCOUNT_AMOUNT_MAX: 100_000_000 * 12,
+  /** Coupon codes: letters, digits, - and _, stored in capitals. */
+  COUPON_CODE_MAX_LENGTH: 40,
+  OFFER_NAME_MAX_LENGTH: 60,
   /** An open lead with no entry for this many days is "cold". */
   COLD_LEAD_DAYS: 14,
   /** A dashboard covers at most a year (a leap year included). */

@@ -5,6 +5,7 @@ import { SingleUseCapture1791705600000 } from './1791705600000-SingleUseCapture'
 import { SalesInsights1791792000000 } from './1791792000000-SalesInsights';
 import { TeamCollaboration1791878400000 } from './1791878400000-TeamCollaboration';
 import { VisitPlace1791964800000 } from './1791964800000-VisitPlace';
+import { DealTerms1792051200000 } from './1792051200000-DealTerms';
 
 /** Every migration, in the order they apply. */
 export const MIGRATIONS = [
@@ -15,4 +16,5 @@ export const MIGRATIONS = [
   SalesInsights1791792000000,
   TeamCollaboration1791878400000,
   VisitPlace1791964800000,
+  DealTerms1792051200000,
 ];

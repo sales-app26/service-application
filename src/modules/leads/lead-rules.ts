@@ -11,6 +11,7 @@ import {
   ForbiddenBusinessException,
 } from '../../common/exceptions/business.exception';
 import { daysBetween } from '../../common/utils';
+import { DealInput, DealTerms, dealGiven, OfferDiscount, resolveDeal } from './deal-rules';
 
 /**
  * The status model (PRD §4) as pure functions — no database, no clock of
@@ -147,29 +148,24 @@ export const resolveReason = (
   return reason;
 };
 
-export interface DealFields {
-  dealValue?: number | null;
-  plan?: string | null;
-}
-
 /**
- * What a follow-up or status change writes to the lead's deal value and plan:
- * only a Converted entry records the price agreed. A field not sent leaves the
- * lead's value as it is, so a later after-sale visit does not wipe it.
+ * What a follow-up or status change writes to the lead's deal: only a Won
+ * entry records the deal agreed, and then as a whole (`resolveDeal`). An entry
+ * with no deal field leaves the lead's deal as it is, so a later after-sale
+ * visit does not wipe it. `offer` is the offer the form names, already found
+ * usable.
  */
 export const dealChangesAfter = (
   status: LeadStatus,
-  deal: DealFields,
-): { dealValue?: number; plan?: string } => {
-  const changes: { dealValue?: number; plan?: string } = {};
-  if (deal.dealValue !== undefined && deal.dealValue !== null) changes.dealValue = deal.dealValue;
-  if (deal.plan !== undefined && deal.plan !== null) changes.plan = deal.plan;
-
-  if (Object.keys(changes).length > 0 && status !== LeadStatus.CONVERTED) {
+  deal: DealInput,
+  offer: OfferDiscount | null,
+): Partial<DealTerms> => {
+  if (!dealGiven(deal)) return {};
+  if (status !== LeadStatus.CONVERTED) {
     throw new BusinessException(
       FOLLOW_UP_ERROR.DEAL_ONLY_WHEN_CONVERTED,
       ERROR_CODE.VALIDATION_FAILED,
     );
   }
-  return changes;
+  return resolveDeal(deal, offer);
 };

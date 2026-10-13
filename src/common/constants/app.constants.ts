@@ -11,6 +11,7 @@ export const ROUTE = {
   TIMELINE: 'timeline',
   DASHBOARD: 'dashboard',
   EXPORTS: 'exports',
+  REPORTS: 'reports',
   VERSIONS: 'versions',
   HEALTH: 'health',
   LEAVES: 'leaves',
@@ -19,6 +20,9 @@ export const ROUTE = {
   TEMPLATES: 'templates',
   TEAM: 'team',
   GEO: 'geo',
+  SETTINGS: 'settings',
+  PLAN_PRICES: 'plan-prices',
+  OFFERS: 'offers',
   ID_PARAM: ':id',
 } as const;
 
@@ -120,6 +124,9 @@ export const SUCCESS_MESSAGE = {
   NOTIFICATIONS_READ: 'Marked as read.',
   LEAD_REQUESTED: 'Request sent. The lead moves to you once a manager approves it.',
   TEMPLATE_SAVED: 'Ready message saved.',
+  PLAN_PRICES_SAVED: 'Plan prices saved.',
+  OFFER_SAVED: 'Offer saved.',
+  OFFER_REMOVED: 'Offer removed.',
   NOTHING_LOGGED: 'No activity on this day.',
   NO_DATA: 'No sales activity for these dates.',
   NO_PROJECTS: 'You’re not on any campaign yet. Your sales manager will add you.',

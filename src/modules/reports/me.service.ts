@@ -19,6 +19,7 @@ import { LeadPresenter } from '../leads/lead.presenter';
 import { AgendaDto, DueTodayQueryDto, HomeDto, TargetProgressDto } from './dto/report.dto';
 import { ReportScopeService } from './report-scope.service';
 import { TargetsService } from './targets.service';
+import { wonMonthlyRevenueSql } from './revenue-rules';
 
 /**
  * The member's own screens (PRD §6: Home, My day): target progress, the
@@ -60,7 +61,7 @@ export class MeService {
          FROM (
            SELECT count(*)::int AS conversions,
                   -- float8 so the driver returns a number, not bigint's string.
-                  coalesce(sum(l.deal_value), 0)::float8 AS revenue
+                  round(coalesce(sum(${wonMonthlyRevenueSql('l')}), 0), 2)::float8 AS revenue
              FROM ${SQL_TABLE.LEADS} l
             WHERE l.converted_by = $1 AND l.deleted_at IS NULL
               AND l.converted_at >= $6 AND l.converted_at < $7

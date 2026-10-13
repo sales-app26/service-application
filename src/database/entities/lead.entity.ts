@@ -9,7 +9,8 @@ import {
 } from 'typeorm';
 
 import { PG_TYPE, SQL_DEFAULT, TABLE } from '../../common/constants';
-import { LeadSource, LeadStatus } from '../../common/enums';
+import { DiscountType, LeadSource, LeadStatus, PlanCode } from '../../common/enums';
+import { nullableNumericTransformer } from '../../common/utils/numeric.transformer';
 import { Location } from './location.entity';
 import { Project } from './project.entity';
 import { User } from './user.entity';
@@ -76,13 +77,44 @@ export class Lead {
   @Column({ name: 'converted_by', type: PG_TYPE.UUID, nullable: true })
   convertedBy: string | null;
 
-  /** Rupees per month. Revenue is the sum over converted leads. @example 1499 */
+  /**
+   * The list price per month, before any discount. Won revenue is the effective
+   * monthly value — see `reports/revenue-rules.ts`. @example 2499
+   */
   @Column({ name: 'deal_value', type: PG_TYPE.INTEGER, nullable: true })
   dealValue: number | null;
 
-  /** The plan sold or offered. @example Annual Gold */
+  /** Old free-text plan, kept for history; new deals write `planCode`. @example Annual Gold */
   @Column({ name: 'plan', type: PG_TYPE.TEXT, nullable: true })
   plan: string | null;
+
+  @Column({ name: 'plan_code', type: PG_TYPE.TEXT, nullable: true })
+  planCode: PlanCode | null;
+
+  /** 1, 3, 6 or 12. Null reads as 1. */
+  @Column({ name: 'deal_tenure_months', type: PG_TYPE.SMALLINT, nullable: true })
+  dealTenureMonths: number | null;
+
+  @Column({ name: 'discount_type', type: PG_TYPE.TEXT, nullable: true })
+  discountType: DiscountType | null;
+
+  /** Percent (0–100) or whole rupees off the whole deal. */
+  @Column({
+    name: 'discount_value',
+    type: PG_TYPE.NUMERIC,
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: nullableNumericTransformer,
+  })
+  discountValue: number | null;
+
+  @Column({ name: 'coupon_code', type: PG_TYPE.TEXT, nullable: true })
+  couponCode: string | null;
+
+  /** The offer picked; its discount and coupon are copied onto the lead. Null for a typed discount. */
+  @Column({ name: 'offer_id', type: PG_TYPE.UUID, nullable: true })
+  offerId: string | null;
 
   @Column({ name: 'source', type: PG_TYPE.TEXT, nullable: true })
   source: LeadSource | null;

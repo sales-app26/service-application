@@ -45,6 +45,7 @@ import { FollowUp, Lead, LeadComment, LeadTransfer, User } from '../../database/
 import { CoverageService } from '../access/coverage.service';
 import { ProjectAccessService } from '../access/project-access.service';
 import { LocationsService } from '../locations/locations.service';
+import { PricingService } from '../pricing/pricing.service';
 import { TransferRejectionsService } from '../transfers/transfer-rejections.service';
 import { StoredVisitProof, VisitProofService } from '../visits/visit-proof.service';
 import { EntryDto, ListEntriesQueryDto } from './dto/entry.dto';
@@ -61,6 +62,7 @@ import {
   PinnedCommentDto,
   UpdateLeadDto,
 } from './dto/lead.dto';
+import { dealGiven, dealTouched, resolveDeal } from './deal-rules';
 import { EntryPresenter } from './entry.presenter';
 import { LeadAccessService, LeadVisibility } from './lead-access.service';
 import { coldSince, resolveNextFollowUpDate, resolveReason } from './lead-rules';
@@ -102,6 +104,7 @@ export class LeadsService {
     private readonly leadPresenter: LeadPresenter,
     private readonly entryPresenter: EntryPresenter,
     private readonly transferRejections: TransferRejectionsService,
+    private readonly pricing: PricingService,
   ) {}
 
   // ------------------------------------------------------------------- create
@@ -143,6 +146,10 @@ export class LeadsService {
       istToday(now),
     );
     const reason = resolveReason(dto.status, dto.reason);
+    // Any stage: on a new lead the deal is the expected one.
+    const deal = dealGiven(dto)
+      ? resolveDeal(dto, await this.pricing.dealOffer(dto.offerId, null))
+      : null;
     const needsProof = this.visitProof.requiresProof(project.type);
     const proofInput = { ...dto, photo };
     if (needsProof) {
@@ -190,8 +197,7 @@ export class LeadsService {
           nextFollowUpDate,
           convertedAt: converted ? now : null,
           convertedBy: converted ? actor.id : null,
-          dealValue: dto.dealValue ?? null,
-          plan: dto.plan ?? null,
+          ...deal,
           source: dto.source ?? null,
           createdBy: actor.id,
           lastActivityAt: now,
@@ -449,8 +455,8 @@ export class LeadsService {
   // ------------------------------------------------------------------- update
 
   /**
-   * The owner edits name, business name, phone, notes, location, deal value,
-   * plan and source at any time (Assumption 5). A new phone is checked for
+   * The owner edits name, business name, phone, notes, location, the deal
+   * and source at any time (Assumption 5). A new phone is checked for
    * duplicates again.
    */
   async update(
@@ -472,6 +478,10 @@ export class LeadsService {
     }
     const locationName =
       dto.location !== undefined ? this.locations.normaliseName(dto.location) : undefined;
+    // Any deal field replaces the whole deal; all of them null clears it.
+    const deal = dealTouched(dto)
+      ? resolveDeal(dto, await this.pricing.dealOffer(dto.offerId, lead))
+      : null;
 
     try {
       await this.dataSource.transaction(async (manager) => {
@@ -485,8 +495,7 @@ export class LeadsService {
         if (dto.name !== undefined) changes.name = dto.name;
         if (dto.businessName !== undefined) changes.businessName = dto.businessName;
         if (dto.notes !== undefined) changes.notes = dto.notes;
-        if (dto.dealValue !== undefined) changes.dealValue = dto.dealValue;
-        if (dto.plan !== undefined) changes.plan = dto.plan;
+        if (deal) Object.assign(changes, deal);
         if (dto.source !== undefined) changes.source = dto.source;
         if (phone !== undefined) changes.phone = phone;
         if (locationName !== undefined) {

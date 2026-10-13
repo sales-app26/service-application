@@ -13,7 +13,7 @@ import {
   VISIT_ERROR,
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
-import { EntryType, ProjectStatus } from '../../common/enums';
+import { EntryType, LeadStatus, ProjectStatus } from '../../common/enums';
 import {
   BusinessException,
   ConflictBusinessException,
@@ -28,10 +28,12 @@ import { CoverageService } from '../access/coverage.service';
 import { ProjectAccessService } from '../access/project-access.service';
 import { LocationsService } from '../locations/locations.service';
 import { SupabaseStorageClient } from '../supabase/supabase-storage.client';
+import { PricingService } from '../pricing/pricing.service';
 import { PhotoUrlDto } from '../visits/dto/visit.dto';
 import { StoredVisitProof, VisitProofService } from '../visits/visit-proof.service';
 import { ChangeStatusDto, EditEntryDto, EntryDto, LogFollowUpDto } from './dto/entry.dto';
 import { EntrySaveResultDto } from './dto/entry-result.dto';
+import { OfferDiscount } from './deal-rules';
 import { EntryPresenter } from './entry.presenter';
 import { LeadAccessService } from './lead-access.service';
 import {
@@ -59,7 +61,8 @@ interface UploadedPhoto {
  * saving; only the note and next date, by the author, on the same IST day.
  *
  * Every save also stamps the lead's `last_activity_at` with the entry's time,
- * and a Converted entry may record the deal value and plan on the lead.
+ * and a Won entry may record the deal on the lead (plan, tenure, price, offer
+ * or discount — `deal-rules.ts`).
  *
  * While an owner is on leave, the backup covering for them logs follow-ups
  * and status changes on their leads: the entry is the backup's, marked with
@@ -82,6 +85,7 @@ export class EntriesService {
     private readonly entryPresenter: EntryPresenter,
     private readonly leadPresenter: LeadPresenter,
     private readonly storage: SupabaseStorageClient,
+    private readonly pricing: PricingService,
     configService: ConfigService,
   ) {
     this.signedUrlTtlSeconds = configService.getOrThrow<VisitConfig>(
@@ -116,7 +120,7 @@ export class EntriesService {
       istToday(now),
     );
     const reason = resolveReason(dto.status, dto.reason);
-    const deal = dealChangesAfter(dto.status, dto);
+    const deal = dealChangesAfter(dto.status, dto, await this.wonOffer(dto, lead));
     const locationName = this.locations.normaliseName(dto.location);
     const needsProof = this.visitProof.requiresProof(lead.project.type);
     const proofInput = { ...dto, photo };
@@ -239,7 +243,7 @@ export class EntriesService {
       istToday(now),
     );
     const reason = resolveReason(dto.status, dto.reason);
-    const deal = dealChangesAfter(dto.status, dto);
+    const deal = dealChangesAfter(dto.status, dto, await this.wonOffer(dto, lead));
     const entryId = randomUUID();
 
     try {
@@ -423,6 +427,16 @@ export class EntriesService {
   }
 
   // ------------------------------------------------------------------ helpers
+
+  /** The offer a Won entry names, checked usable; null for any other entry. */
+  private wonOffer(
+    dto: LogFollowUpDto | ChangeStatusDto,
+    lead: Lead,
+  ): Promise<OfferDiscount | null> {
+    return dto.status === LeadStatus.CONVERTED
+      ? this.pricing.dealOffer(dto.offerId, lead)
+      : Promise.resolve(null);
+  }
 
   /**
    * Only the owner logs a follow-up — not an admin, even one who can read the

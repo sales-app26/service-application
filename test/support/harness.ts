@@ -46,6 +46,7 @@ export const startHarness = async (): Promise<Harness> => {
     '05_sales_insights.sql',
     '06_team_collaboration.sql',
     '07_visit_place.sql',
+    '08_deal_terms.sql',
   ]) {
     await db.exec(readFileSync(join(__dirname, '../../src/database/sql', file), 'utf8'));
   }

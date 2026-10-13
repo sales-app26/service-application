@@ -756,3 +756,231 @@ describe('07_visit_place.sql', () => {
     expect(rows).toEqual([]);
   });
 });
+
+describe('08_deal_terms.sql', () => {
+  let db: PGlite;
+  const seller = randomUUID();
+  const project = randomUUID();
+  const location = randomUUID();
+  const oldLead = randomUUID();
+  let phone = 9100000000;
+
+  const rejects = (promise: Promise<unknown>, pattern: RegExp) =>
+    expect(promise).rejects.toThrow(pattern);
+
+  const lead = (fields: Record<string, unknown>) => {
+    const columns = Object.keys(fields);
+    return db.query(
+      `INSERT INTO leads (project_id, owner_id, name, phone, location_id${columns.map((c) => `, ${c}`).join('')})
+       VALUES ($1, $2, 'Client', $3, $4${columns.map((_, i) => `, $${i + 5}`).join('')})`,
+      [project, seller, String((phone += 1)), location, ...Object.values(fields)],
+    );
+  };
+  const offer = (fields: Record<string, unknown> = {}) => {
+    const row = {
+      name: 'Diwali offer',
+      coupon_code: 'DIWALI10',
+      discount_type: 'percent',
+      discount_value: 10,
+      starts_on: null,
+      ends_on: null,
+      ...fields,
+    };
+    return db.query<{ id: string }>(
+      `INSERT INTO offers (name, coupon_code, discount_type, discount_value, starts_on, ends_on, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [
+        row.name,
+        row.coupon_code,
+        row.discount_type,
+        row.discount_value,
+        row.starts_on,
+        row.ends_on,
+        seller,
+      ],
+    );
+  };
+
+  beforeAll(async () => {
+    db = new PGlite();
+    for (const file of [
+      SQL_FILE.SALES_SCHEMA,
+      SQL_FILE.USER_DELETION,
+      SQL_FILE.SINGLE_USE_CAPTURE,
+      SQL_FILE.SALES_INSIGHTS,
+      SQL_FILE.TEAM_COLLABORATION,
+      SQL_FILE.VISIT_PLACE,
+    ]) {
+      await db.exec(readSqlFile(file));
+    }
+    await db.exec('SET search_path TO sales');
+    await db.query(
+      `INSERT INTO users (id, name, email, role) VALUES ($1, 'Seller', 'seller@x.in', 'sales_person')`,
+      [seller],
+    );
+    await db.query(
+      `INSERT INTO projects (id, name, type, start_date, created_by) VALUES ($1, 'Pune', 'online', '2026-10-01', $2)`,
+      [project, seller],
+    );
+    await db.query(`INSERT INTO locations (id, project_id, name) VALUES ($1, $2, 'Wanowrie')`, [
+      location,
+      project,
+    ]);
+    // A deal won before plans, tenure and discounts existed.
+    await db.query(
+      `INSERT INTO leads (id, project_id, owner_id, name, phone, location_id, deal_value, plan)
+       VALUES ($1, $2, $3, 'Old', '9000000001', $4, 1499, 'Annual Gold')`,
+      [oldLead, project, seller, location],
+    );
+    await db.exec(readSqlFile(SQL_FILE.DEAL_TERMS));
+  }, 30_000);
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('keeps earlier deals as they were, and can run again', async () => {
+    const { rows } = await db.query(
+      `SELECT deal_value, plan, plan_code, deal_tenure_months, discount_type, offer_id FROM leads WHERE id = $1`,
+      [oldLead],
+    );
+    expect(rows).toEqual([
+      {
+        deal_value: 1499,
+        plan: 'Annual Gold',
+        plan_code: null,
+        deal_tenure_months: null,
+        discount_type: null,
+        offer_id: null,
+      },
+    ]);
+    await expect(db.exec(readSqlFile(SQL_FILE.DEAL_TERMS))).resolves.toBeDefined();
+  });
+
+  it('starts with the four plans, Free at ₹0 and the rest unpriced', async () => {
+    const { rows } = await db.query(
+      `SELECT plan, monthly_price FROM plan_prices ORDER BY monthly_price NULLS LAST, plan`,
+    );
+    expect(rows).toEqual([
+      { plan: 'free', monthly_price: 0 },
+      { plan: 'growth', monthly_price: null },
+      { plan: 'growth_plus', monthly_price: null },
+      { plan: 'pro', monthly_price: null },
+    ]);
+    await rejects(
+      db.query(`UPDATE plan_prices SET monthly_price = 99 WHERE plan = 'free'`),
+      /plan_prices_free_is_free/,
+    );
+    await rejects(
+      db.query(`INSERT INTO plan_prices (plan, monthly_price) VALUES ('gold', 1)`),
+      /plan_prices_plan_valid/,
+    );
+    await rejects(
+      db.query(`UPDATE plan_prices SET monthly_price = -1 WHERE plan = 'pro'`),
+      /plan_prices_price_range/,
+    );
+  });
+
+  it('keeps an offer’s name, coupon, discount and dates within their rules', async () => {
+    await expect(offer()).resolves.toBeDefined();
+    await rejects(offer({ name: ' ' }), /offers_name_length/);
+    await rejects(offer({ coupon_code: 'diwali 10' }), /offers_coupon_code_format/);
+    await rejects(offer({ discount_type: 'bogo' }), /offers_discount_type_valid/);
+    await rejects(offer({ discount_value: 0 }), /offers_discount_range/);
+    await rejects(offer({ discount_value: 100.5 }), /offers_discount_range/);
+    await rejects(
+      offer({ discount_type: 'amount', discount_value: 99.5 }),
+      /offers_discount_range/,
+    );
+    await rejects(
+      offer({ starts_on: '2026-10-13', ends_on: '2026-10-12' }),
+      /offers_ends_after_start/,
+    );
+  });
+
+  it('takes a plan, tenure and discount within their rules', async () => {
+    await expect(
+      lead({
+        plan_code: 'growth',
+        deal_value: 2499,
+        deal_tenure_months: 6,
+        discount_type: 'percent',
+        discount_value: 10,
+        coupon_code: 'DIWALI10',
+      }),
+    ).resolves.toBeDefined();
+    await rejects(lead({ plan_code: 'gold' }), /leads_plan_code_valid/);
+    await rejects(lead({ plan_code: 'pro', plan: 'Pro' }), /leads_plan_one_kind/);
+    await rejects(lead({ deal_value: 100, deal_tenure_months: 2 }), /leads_deal_tenure_valid/);
+    await rejects(
+      lead({ deal_value: 100, discount_type: 'bogo', discount_value: 1 }),
+      /leads_discount_type_valid/,
+    );
+    await rejects(lead({ deal_value: 100, discount_type: 'percent' }), /leads_discount_pair/);
+    await rejects(lead({ discount_type: 'percent', discount_value: 10 }), /leads_discount_range/);
+    await rejects(
+      lead({ deal_value: 100, discount_type: 'percent', discount_value: 101 }),
+      /leads_discount_range/,
+    );
+    await rejects(
+      lead({
+        deal_value: 1000,
+        deal_tenure_months: 3,
+        discount_type: 'amount',
+        discount_value: 3001,
+      }),
+      /leads_discount_range/,
+    );
+    await expect(
+      lead({
+        deal_value: 1000,
+        deal_tenure_months: 3,
+        discount_type: 'amount',
+        discount_value: 3000,
+      }),
+    ).resolves.toBeDefined();
+    await rejects(lead({ deal_value: 100, coupon_code: 'SAVE' }), /leads_coupon_code_format/);
+    await rejects(
+      lead({ deal_value: 100, discount_type: 'amount', discount_value: 5, coupon_code: 'a b' }),
+      /leads_coupon_code_format/,
+    );
+  });
+
+  it('makes Free cost nothing, and ties an offer to the discount copied from it', async () => {
+    await expect(lead({ plan_code: 'free', deal_value: 0 })).resolves.toBeDefined();
+    await rejects(lead({ plan_code: 'free', deal_value: 499 }), /leads_free_plan_is_free/);
+    await rejects(
+      lead({ plan_code: 'free', deal_value: 0, deal_tenure_months: 3 }),
+      /leads_free_plan_is_free/,
+    );
+    const { rows } = await offer({ name: 'Monsoon' });
+    await rejects(lead({ deal_value: 100, offer_id: rows[0].id }), /leads_offer_has_discount/);
+    await expect(
+      lead({
+        deal_value: 100,
+        offer_id: rows[0].id,
+        discount_type: 'percent',
+        discount_value: 10,
+        coupon_code: 'DIWALI10',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('reverts cleanly', async () => {
+    await db.exec(readSqlFile(SQL_FILE.DEAL_TERMS_DOWN));
+    const { rows } = await db.query<{ name: string }>(
+      `SELECT table_name AS name FROM information_schema.tables
+        WHERE table_schema = 'sales' AND table_name IN ('plan_prices', 'offers')
+       UNION ALL
+       SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'sales' AND table_name = 'leads'
+          AND column_name IN ('plan_code', 'deal_tenure_months', 'discount_type',
+                              'discount_value', 'coupon_code', 'offer_id')`,
+    );
+    expect(rows).toEqual([]);
+    const { rows: kept } = await db.query(`SELECT deal_value, plan FROM leads WHERE id = $1`, [
+      oldLead,
+    ]);
+    expect(kept).toEqual([{ deal_value: 1499, plan: 'Annual Gold' }]);
+  });
+});

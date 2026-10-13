@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { LocationsModule } from '../locations/locations.module';
+import { PricingModule } from '../pricing/pricing.module';
 import { VisitsModule } from '../visits/visits.module';
 import { EntriesController } from './entries.controller';
 import { EntriesService } from './entries.service';
@@ -17,7 +18,7 @@ import { LeadsService } from './leads.service';
  * transfers, the timeline and the dashboard, which show the same rows.
  */
 @Module({
-  imports: [LocationsModule, VisitsModule],
+  imports: [LocationsModule, PricingModule, VisitsModule],
   controllers: [LeadsController, EntriesController],
   providers: [
     LeadsService,

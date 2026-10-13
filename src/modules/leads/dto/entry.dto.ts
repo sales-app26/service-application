@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional, IntersectionType } from '@nestjs/swag
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
-  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -21,6 +20,7 @@ import { EntryType, LeadStatus, LostReason } from '../../../common/enums';
 import { emptyToUndefined, toNumber, trimString, trimToNull } from '../../../common/utils';
 import { IsIsoDate } from '../../../common/validators/is-iso-date.validator';
 import { LocationRefDto } from '../../locations/dto/location.dto';
+import { DealFieldsDto } from './deal.dto';
 
 export class PersonRefDto {
   @ApiProperty({ format: 'uuid' })
@@ -179,10 +179,9 @@ export class VisitProofFieldsDto {
 
 /**
  * What an entry says about the outcome, beyond the status: why a lead was
- * turned down, or the deal it was converted on. Multipart sends strings, so
- * the deal value is converted explicitly.
+ * turned down, or the deal it was won on (`DealFieldsDto`, Won only).
  */
-export class EntryOutcomeFieldsDto {
+export class EntryOutcomeFieldsDto extends DealFieldsDto {
   @ApiPropertyOptional({
     enum: LostReason,
     description: 'Only with Not interested or Lost; anything else is refused.',
@@ -191,32 +190,6 @@ export class EntryOutcomeFieldsDto {
   @Transform(emptyToUndefined)
   @IsEnum(LostReason)
   reason?: LostReason;
-
-  @ApiPropertyOptional({
-    minimum: 0,
-    maximum: BUSINESS_RULE.DEAL_VALUE_MAX,
-    example: 1499,
-    description:
-      'Rupees per month, written to the lead. On a follow-up or status change, only with Converted.',
-  })
-  @IsOptional()
-  @Transform(toNumber)
-  @IsInt()
-  @Min(0)
-  @Max(BUSINESS_RULE.DEAL_VALUE_MAX)
-  dealValue?: number;
-
-  @ApiPropertyOptional({
-    maxLength: BUSINESS_RULE.PLAN_MAX_LENGTH,
-    example: 'Annual Gold',
-    description: 'The plan sold, written to the lead. Same rule as `dealValue`.',
-  })
-  @IsOptional()
-  @Transform(trimToNull)
-  @ValidateIf((_, value) => value !== null)
-  @IsString()
-  @MaxLength(BUSINESS_RULE.PLAN_MAX_LENGTH)
-  plan?: string | null;
 }
 
 export class LogFollowUpDto extends IntersectionType(VisitProofFieldsDto, EntryOutcomeFieldsDto) {

@@ -149,7 +149,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Add a lead with its first follow-up',
     description: [
-      'Name, phone and location are required; deal value, plan and source are optional. A `reason` is accepted only with Not interested or Lost. The phone may not already be a lead in this project:',
+      'Name, phone and location are required; the expected deal (plan, tenure, price, offer or discount) and source are optional. A `reason` is accepted only with Not interested or Lost. The phone may not already be a lead in this project:',
       '- yours → `409 DUPLICATE_LEAD_OWN` with `details.leadId`;',
       '- someone else’s → `409 DUPLICATE_LEAD_OTHER`, naming only the owner.',
       '',
@@ -211,7 +211,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Edit a lead (owner only)',
     description:
-      'Name, business name, phone, notes, location, deal value, plan and source, at any time. A new phone is re-checked for duplicates.',
+      'Name, business name, phone, notes, location, the deal and source, at any time. A new phone is re-checked for duplicates. Any deal field replaces the whole deal; all null clears it.',
   })
   @ApiOkEnvelope(LeadDetailDto)
   update(
@@ -267,7 +267,7 @@ export class LeadsController {
     description: [
       'Status cannot go back to New. A Converted lead can be followed up but stays Converted. Next date: required for Follow-up scheduled, cleared for Not interested / Converted / Lost, never in the past, at most a year ahead.',
       '',
-      '`reason` only with Not interested or Lost; `dealValue` and `plan` only with Converted, and are written to the lead. Anything else is `400 VALIDATION_FAILED`.',
+      '`reason` only with Not interested or Lost; the deal fields only with Converted, and are written to the lead as a whole. Anything else is `400 VALIDATION_FAILED`.',
       '',
       'Refused with `409 PROJECT_CLOSED` if the project closed while the form was open, and `409 LEAD_TRANSFERRED` ("This lead now belongs to …") if the lead was transferred meanwhile.',
       '',
@@ -291,7 +291,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Change a lead’s status by hand',
     description:
-      'The owner or an admin, with a note. Recorded in the history as a status change. Only an admin can move a lead away from Converted ("Ask your moderator to change this."); doing so removes the conversion credit. No photo is asked. `reason` only with Not interested or Lost; `dealValue` and `plan` only with Converted.',
+      'The owner or an admin, with a note. Recorded in the history as a status change. Only an admin can move a lead away from Converted ("Ask your moderator to change this."); doing so removes the conversion credit. No photo is asked. `reason` only with Not interested or Lost; the deal fields only with Converted.',
   })
   @ApiOkEnvelope(EntrySaveResultDto)
   changeStatus(

@@ -7,6 +7,7 @@ import { LeadOwnerTag, TransferStatus } from '../../common/enums';
 import { daysBetween, istToday } from '../../common/utils';
 import { Lead } from '../../database/entities';
 import { LeadSummaryDto } from './dto/lead.dto';
+import { dealMoney } from './deal-rules';
 import { isTerminal } from './lead-rules';
 
 /**
@@ -27,7 +28,10 @@ export class LeadPresenter {
     const creatorIds = [
       ...new Set(leads.map((lead) => lead.createdBy).filter((id): id is string => id !== null)),
     ];
-    const [pending, activeOwners, creators] = await Promise.all([
+    const offerIds = [
+      ...new Set(leads.map((lead) => lead.offerId).filter((id): id is string => id !== null)),
+    ];
+    const [pending, activeOwners, creators, offers] = await Promise.all([
       this.dataSource.query(
         `SELECT lead_id FROM ${SQL_TABLE.LEAD_TRANSFERS} WHERE status = $1 AND lead_id = ANY($2::uuid[])`,
         [TransferStatus.PENDING, leadIds],
@@ -48,11 +52,19 @@ export class LeadPresenter {
             [creatorIds],
           ) as Promise<Array<{ id: string; name: string }>>)
         : Promise.resolve([] as Array<{ id: string; name: string }>),
+      // Removed offers too: a deal keeps the name of the offer it was won on.
+      offerIds.length > 0
+        ? (this.dataSource.query(
+            `SELECT id, name FROM ${SQL_TABLE.OFFERS} WHERE id = ANY($1::uuid[])`,
+            [offerIds],
+          ) as Promise<Array<{ id: string; name: string }>>)
+        : Promise.resolve([] as Array<{ id: string; name: string }>),
     ]);
 
     const pendingIds = new Set(pending.map((row) => row.lead_id));
     const ownerIsMember = new Set(activeOwners.map((row) => row.id));
     const creatorById = new Map(creators.map((row) => [row.id, row]));
+    const offerById = new Map(offers.map((row) => [row.id, row]));
     const today = istToday();
 
     return leads.map((lead) => ({
@@ -74,8 +86,8 @@ export class LeadPresenter {
             : null
         : null,
       convertedAt: lead.convertedAt,
-      dealValue: lead.dealValue,
-      plan: lead.plan,
+      ...dealSummary(lead),
+      offer: lead.offerId ? (offerById.get(lead.offerId) ?? null) : null,
       source: lead.source,
       lastActivityAt: lead.lastActivityAt,
       createdBy: lead.createdBy ? (creatorById.get(lead.createdBy) ?? null) : null,
@@ -85,6 +97,33 @@ export class LeadPresenter {
     }));
   }
 }
+
+/** The deal fields of a lead, with what the client pays and what it adds to revenue. */
+export const dealSummary = (
+  lead: Pick<
+    Lead,
+    | 'dealValue'
+    | 'plan'
+    | 'planCode'
+    | 'dealTenureMonths'
+    | 'discountType'
+    | 'discountValue'
+    | 'couponCode'
+  >,
+) => {
+  const money = dealMoney(lead);
+  return {
+    dealValue: lead.dealValue,
+    plan: lead.plan,
+    planCode: lead.planCode,
+    dealTenureMonths: lead.dealTenureMonths,
+    discountType: lead.discountType,
+    discountValue: lead.discountValue,
+    couponCode: lead.couponCode,
+    dealTotal: money?.dealTotal ?? null,
+    effectiveMonthlyValue: money?.effectiveMonthlyValue ?? null,
+  };
+};
 
 /** "Overdue by N days" until a new entry is logged (PRD §5.6). */
 export const overdueDays = (

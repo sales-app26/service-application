@@ -1,5 +1,5 @@
 import { ERROR_CODE, FOLLOW_UP_ERROR } from '../../common/constants';
-import { LeadStatus, LostReason } from '../../common/enums';
+import { LeadStatus, LostReason, PlanCode } from '../../common/enums';
 import {
   assertFollowUpStatus,
   assertManualStatusChange,
@@ -181,24 +181,36 @@ describe('resolveReason', () => {
 });
 
 describe('dealChangesAfter', () => {
-  it('writes what a Converted entry sends, and only that', () => {
-    expect(dealChangesAfter(LeadStatus.CONVERTED, { dealValue: 1499, plan: 'Gold' })).toEqual({
-      dealValue: 1499,
-      plan: 'Gold',
+  const none = {
+    plan: null,
+    planCode: null,
+    dealTenureMonths: null,
+    discountType: null,
+    discountValue: null,
+    couponCode: null,
+    offerId: null,
+  };
+
+  it('writes the whole deal a Won entry sends', () => {
+    expect(
+      dealChangesAfter(LeadStatus.CONVERTED, { dealValue: 1499, planCode: PlanCode.GROWTH }, null),
+    ).toEqual({ ...none, dealValue: 1499, planCode: PlanCode.GROWTH });
+    expect(dealChangesAfter(LeadStatus.CONVERTED, { dealValue: 0 }, null)).toEqual({
+      ...none,
+      dealValue: 0,
     });
-    expect(dealChangesAfter(LeadStatus.CONVERTED, { dealValue: 0 })).toEqual({ dealValue: 0 });
-    // A follow-up visit on a converted lead that sends nothing keeps the deal.
-    expect(dealChangesAfter(LeadStatus.CONVERTED, {})).toEqual({});
+    // A follow-up visit on a won lead that sends nothing keeps the deal.
+    expect(dealChangesAfter(LeadStatus.CONVERTED, {}, null)).toEqual({});
   });
 
   it('ignores empty values, so a blank form field never clears the deal', () => {
-    expect(dealChangesAfter(LeadStatus.CONTACTED, { dealValue: undefined, plan: null })).toEqual(
-      {},
-    );
+    expect(
+      dealChangesAfter(LeadStatus.CONTACTED, { dealValue: undefined, planCode: null }, null),
+    ).toEqual({});
   });
 
   it('refuses a deal on any other status as a validation error', () => {
-    expect(() => dealChangesAfter(LeadStatus.INTERESTED, { plan: 'Gold' })).toThrow(
+    expect(() => dealChangesAfter(LeadStatus.INTERESTED, { planCode: PlanCode.PRO }, null)).toThrow(
       expect.objectContaining({
         message: FOLLOW_UP_ERROR.DEAL_ONLY_WHEN_CONVERTED,
         errorCode: ERROR_CODE.VALIDATION_FAILED,

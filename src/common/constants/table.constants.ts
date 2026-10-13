@@ -21,6 +21,8 @@ export const TABLE = {
   LEAD_COMMENTS: 'lead_comments',
   NOTIFICATIONS: 'notifications',
   MESSAGE_TEMPLATES: 'message_templates',
+  PLAN_PRICES: 'plan_prices',
+  OFFERS: 'offers',
 } as const;
 
 /**
@@ -38,6 +40,7 @@ export const PG_TYPE = {
   TEXT: 'text',
   BOOLEAN: 'boolean',
   INTEGER: 'integer',
+  SMALLINT: 'smallint',
   NUMERIC: 'numeric',
   DATE: 'date',
   TIMESTAMPTZ: 'timestamptz',

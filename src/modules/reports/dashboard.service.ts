@@ -55,6 +55,7 @@ import {
 } from './report-rules';
 import { ReportScopeService, ResolvedRange } from './report-scope.service';
 import { TargetsService } from './targets.service';
+import { wonMonthlyRevenueSql } from './revenue-rules';
 
 /** A week of conversions is small; this only guards a pathological week. */
 const CONVERSIONS_LIST_LIMIT = 500;
@@ -221,7 +222,7 @@ export class DashboardService {
   ): Promise<ConversionsByUser[]> {
     return this.dataSource.query(
       `SELECT l.converted_by AS user_id, count(*)::int AS count,
-              coalesce(sum(l.deal_value), 0)::float8 AS revenue
+              round(coalesce(sum(${wonMonthlyRevenueSql('l')}), 0), 2)::float8 AS revenue
          FROM ${SQL_TABLE.LEADS} l
         WHERE l.deleted_at IS NULL
           AND l.converted_at >= $1 AND l.converted_at < $2
@@ -479,7 +480,7 @@ export class DashboardService {
       ) as Promise<Array<{ day: string; count: number }>>,
       this.dataSource.query(
         `SELECT ${istDateSql('l.converted_at')} AS day, count(*)::int AS count,
-                coalesce(sum(l.deal_value), 0)::float8 AS revenue
+                round(coalesce(sum(${wonMonthlyRevenueSql('l')}), 0), 2)::float8 AS revenue
            FROM ${SQL_TABLE.LEADS} l
           WHERE l.deleted_at IS NULL
             AND l.converted_at >= $1 AND l.converted_at < $2

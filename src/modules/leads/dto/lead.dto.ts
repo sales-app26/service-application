@@ -8,30 +8,30 @@ import {
   IsBoolean,
   IsEnum,
   IsIn,
-  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
-  Max,
   MaxLength,
-  Min,
   ValidateIf,
 } from 'class-validator';
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
 import { PaginationQueryDto } from '../../../common/dto';
 import {
+  DiscountType,
   LeadDue,
   LeadOwnerTag,
   LeadSource,
   LeadStatus,
+  PlanCode,
   ProjectStatus,
   ProjectType,
   TransferStatus,
 } from '../../../common/enums';
 import { emptyToUndefined, toBoolean, trimString, trimToNull } from '../../../common/utils';
 import { LocationRefDto } from '../../locations/dto/location.dto';
+import { DealFieldsDto, DealOfferRefDto } from './deal.dto';
 import { EntryDto, LogFollowUpDto, PersonRefDto } from './entry.dto';
 
 export class LeadOwnerDto extends PersonRefDto {
@@ -114,13 +114,68 @@ export class LeadSummaryDto {
   @ApiPropertyOptional({
     nullable: true,
     type: Number,
-    example: 1499,
-    description: 'Rupees per month.',
+    example: 2499,
+    description: 'List price per month in rupees, before any discount.',
   })
   dealValue: number | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, example: 'Annual Gold' })
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    example: 'Annual Gold',
+    description:
+      'Old free-text plan, kept for history and shown when `planCode` is null. Never written any more.',
+  })
   plan: string | null;
+
+  @ApiPropertyOptional({ enum: PlanCode, nullable: true })
+  planCode: PlanCode | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    example: 6,
+    description: 'Months the deal runs for; null reads as 1.',
+  })
+  dealTenureMonths: number | null;
+
+  @ApiPropertyOptional({ enum: DiscountType, nullable: true })
+  discountType: DiscountType | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    example: 10,
+    description: 'Percent, or rupees off the whole deal.',
+  })
+  discountValue: number | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String, example: 'DIWALI10' })
+  couponCode: string | null;
+
+  @ApiPropertyOptional({
+    type: DealOfferRefDto,
+    nullable: true,
+    description: 'The offer the deal used; null for a typed discount or none.',
+  })
+  offer: DealOfferRefDto | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    example: 13494,
+    description: 'What the client pays for the whole tenure: price × tenure − discount.',
+  })
+  dealTotal: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    example: 2249,
+    description:
+      'Deal total ÷ tenure: what the deal adds to "Monthly revenue won". Rupees, two decimals.',
+  })
+  effectiveMonthlyValue: number | null;
 
   @ApiPropertyOptional({ enum: LeadSource, nullable: true })
   source: LeadSource | null;
@@ -297,10 +352,14 @@ export class CreateLeadDto extends LogFollowUpDto {
   source?: LeadSource;
 
   // `status` is inherited. On a new lead New is allowed — the only place it is.
-  // So are `dealValue` and `plan`, which a new lead takes with any status.
+  // So are the deal fields, which a new lead takes with any status (the expected deal).
 }
 
-export class UpdateLeadDto {
+/**
+ * Any of the lead's details. Sending any deal field replaces the whole deal
+ * (fields left out are cleared); all of them null clears it.
+ */
+export class UpdateLeadDto extends DealFieldsDto {
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(trimString)
@@ -339,28 +398,6 @@ export class UpdateLeadDto {
   @IsNotEmpty()
   @MaxLength(BUSINESS_RULE.LOCATION_MAX_LENGTH * 2)
   location?: string;
-
-  @ApiPropertyOptional({
-    nullable: true,
-    minimum: 0,
-    maximum: BUSINESS_RULE.DEAL_VALUE_MAX,
-    example: 1499,
-    description: 'Rupees per month. Null clears it.',
-  })
-  @IsOptional()
-  @ValidateIf((_, value) => value !== null)
-  @IsInt()
-  @Min(0)
-  @Max(BUSINESS_RULE.DEAL_VALUE_MAX)
-  dealValue?: number | null;
-
-  @ApiPropertyOptional({ nullable: true, maxLength: BUSINESS_RULE.PLAN_MAX_LENGTH })
-  @IsOptional()
-  @Transform(trimToNull)
-  @ValidateIf((_, value) => value !== null)
-  @IsString()
-  @MaxLength(BUSINESS_RULE.PLAN_MAX_LENGTH)
-  plan?: string | null;
 
   @ApiPropertyOptional({ enum: LeadSource, nullable: true })
   @IsOptional()

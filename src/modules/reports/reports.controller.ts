@@ -65,7 +65,7 @@ export class ReportsController {
   @ApiOperation({
     summary: 'Home screen numbers',
     description:
-      'Own target progress per project (or one project), how many leads are due or overdue, follow-ups logged today, leads owned, and conversions and revenue (sum of deal values) credited this calendar month.',
+      'Own target progress per project (or one project), how many leads are due or overdue, follow-ups logged today, leads owned, and conversions and revenue (sum of effective monthly values: price × tenure − discount, ÷ tenure) credited this calendar month.',
   })
   @ApiOkEnvelope(HomeDto)
   home(
@@ -167,7 +167,7 @@ export class ReportsController {
   @ApiProduces(MIME_TYPE.CSV)
   @ApiOperation({
     summary: 'Export leads (CSV)',
-    description: `Leads added in the date range, with their current state, deal value, plan, source and last activity. At most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days and 20,000 rows per file.`,
+    description: `Leads added in the date range, with their current state, deal (plan, tenure, monthly price, discount, coupon, deal total and monthly revenue after discount), source and last activity. At most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days and 20,000 rows per file.`,
   })
   async exportLeads(
     @CurrentUser() actor: AuthenticatedUser,

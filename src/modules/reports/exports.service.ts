@@ -9,6 +9,7 @@ import {
   ENTRY_TYPE_LABEL,
   ERROR_CODE,
   NO,
+  PLAN_LABEL,
   REASON_LABEL,
   REPORT_ERROR,
   ROUTE,
@@ -18,12 +19,20 @@ import {
   YES,
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
-import { EntryType, LeadSource, LeadStatus, LostReason } from '../../common/enums';
+import {
+  DiscountType,
+  EntryType,
+  LeadSource,
+  LeadStatus,
+  LostReason,
+  PlanCode,
+} from '../../common/enums';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { daysBetween, formatIstDateTime, toCsv } from '../../common/utils';
 import { AppConfig } from '../../config/configuration';
 import { ExportFilterDto } from './dto/report.dto';
 import { ReportScopeService } from './report-scope.service';
+import { dealTotalSql, wonMonthlyRevenueSql } from './revenue-rules';
 
 export interface CsvFile {
   fileName: string;
@@ -59,13 +68,18 @@ export class ExportsService {
     const rows = (await this.dataSource.query(
       `SELECT l.id, p.name AS project, l.name, l.business_name, l.phone, loc.name AS location,
               l.status, l.next_follow_up_date::text AS next_follow_up_date, o.name AS owner, o.is_active AS owner_active,
-              l.converted_at, cb.name AS converted_by, l.deal_value, l.plan, l.source,
-              l.created_at, l.updated_at, l.last_activity_at, l.notes
+              l.converted_at, cb.name AS converted_by, l.deal_value, l.plan, l.plan_code,
+              l.deal_tenure_months, l.discount_type, l.discount_value::float8 AS discount_value,
+              l.coupon_code, ofr.name AS offer_name,
+              ${dealTotalSql('l')}::float8 AS deal_total,
+              round(${wonMonthlyRevenueSql('l')}, 2)::float8 AS monthly_revenue,
+              l.source, l.created_at, l.updated_at, l.last_activity_at, l.notes
          FROM ${SQL_TABLE.LEADS} l
          JOIN ${SQL_TABLE.PROJECTS} p ON p.id = l.project_id
          JOIN ${SQL_TABLE.USERS} o ON o.id = l.owner_id
          JOIN ${SQL_TABLE.LOCATIONS} loc ON loc.id = l.location_id
          LEFT JOIN ${SQL_TABLE.USERS} cb ON cb.id = l.converted_by
+         LEFT JOIN ${SQL_TABLE.OFFERS} ofr ON ofr.id = l.offer_id
         WHERE l.deleted_at IS NULL
           AND l.created_at >= $1 AND l.created_at < $2
           AND ($3::uuid[] IS NULL OR l.project_id = ANY($3::uuid[]))
@@ -88,6 +102,14 @@ export class ExportsService {
       converted_by: string | null;
       deal_value: number | null;
       plan: string | null;
+      plan_code: PlanCode | null;
+      deal_tenure_months: number | null;
+      discount_type: DiscountType | null;
+      discount_value: number | null;
+      coupon_code: string | null;
+      offer_name: string | null;
+      deal_total: number | null;
+      monthly_revenue: number | null;
       source: LeadSource | null;
       created_at: Date;
       updated_at: Date;
@@ -111,8 +133,13 @@ export class ExportsService {
         'Owner still on team',
         'Won on (IST)',
         'Won by',
-        'Deal value (₹/month)',
         'Plan',
+        'Tenure (months)',
+        'Monthly price (₹)',
+        'Discount',
+        'Coupon',
+        'Deal total (₹)',
+        'Monthly revenue after discount (₹)',
         'Lead source',
         'Added on (IST)',
         'Last changed (IST)',
@@ -132,8 +159,16 @@ export class ExportsService {
         row.owner_active ? YES : NO,
         formatIstDateTime(row.converted_at),
         row.converted_by,
+        row.plan_code ? PLAN_LABEL[row.plan_code] : row.plan,
+        // Free runs no term; any other deal without one was for a month.
+        row.plan_code === PlanCode.FREE || row.deal_value === null
+          ? null
+          : (row.deal_tenure_months ?? 1),
         row.deal_value,
-        row.plan,
+        discountText(row),
+        row.coupon_code,
+        row.deal_total,
+        row.monthly_revenue,
         row.source ? (SOURCE_LABEL[row.source] ?? row.source) : null,
         formatIstDateTime(row.created_at),
         formatIstDateTime(row.updated_at),
@@ -266,3 +301,17 @@ export class ExportsService {
     return this.appUrl ? `${this.appUrl}/${path}` : path;
   }
 }
+
+/** "10% off", "₹500 off", with the offer's name when one was picked. */
+const discountText = (row: {
+  discount_type: DiscountType | null;
+  discount_value: number | null;
+  offer_name: string | null;
+}): string | null => {
+  if (row.discount_type === null || row.discount_value === null) return null;
+  const amount =
+    row.discount_type === DiscountType.PERCENT
+      ? `${row.discount_value}% off`
+      : `₹${row.discount_value} off`;
+  return row.offer_name ? `${amount} (${row.offer_name})` : amount;
+};

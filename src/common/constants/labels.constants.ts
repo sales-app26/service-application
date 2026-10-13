@@ -1,4 +1,4 @@
-import { EntryType, LeadSource, LeadStatus, LostReason } from '../enums';
+import { EntryType, LeadSource, LeadStatus, LostReason, PlanCode } from '../enums';
 
 /*
  * How enum values read to a salesperson, wherever the API writes them out as
@@ -41,6 +41,13 @@ export const REASON_LABEL: Record<LostReason, string> = {
 export const ENTRY_TYPE_LABEL: Record<EntryType, string> = {
   [EntryType.FOLLOW_UP]: 'Follow-up',
   [EntryType.STATUS_CHANGE]: 'Stage change',
+};
+
+export const PLAN_LABEL: Record<PlanCode, string> = {
+  [PlanCode.FREE]: 'Free',
+  [PlanCode.GROWTH]: 'Growth',
+  [PlanCode.GROWTH_PLUS]: 'Growth Plus',
+  [PlanCode.PRO]: 'Pro',
 };
 
 export const YES = 'Yes';

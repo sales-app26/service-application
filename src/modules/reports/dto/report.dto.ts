@@ -208,7 +208,7 @@ export class HomeDto {
   @ApiProperty({
     example: 14990,
     description:
-      'Sum of the deal values (₹/month) of those conversions; a lead without one adds 0.',
+      'Sum of the effective monthly values (₹/month after discount, over the tenure) of those conversions; a lead without a price adds 0.',
   })
   revenueThisMonth: number;
 
@@ -371,7 +371,10 @@ export class PersonActivityDto {
   @ApiProperty({ description: 'Conversions credited to this person in the range.' })
   conversions: number;
 
-  @ApiProperty({ description: 'Sum of the deal values (₹/month) of those conversions.' })
+  @ApiProperty({
+    description:
+      'Sum of the effective monthly values (₹/month after discount) of those conversions.',
+  })
   revenue: number;
 
   @ApiProperty()
@@ -445,7 +448,9 @@ export class TrendPointDto {
   @ApiProperty()
   conversions: number;
 
-  @ApiProperty({ description: 'Deal values (₹/month) of those conversions.' })
+  @ApiProperty({
+    description: 'Effective monthly values (₹/month after discount) of those conversions.',
+  })
   revenue: number;
 }
 
@@ -524,7 +529,10 @@ export class DashboardDto {
   @ApiProperty({ description: 'Leads converted in the range.' })
   conversions: number;
 
-  @ApiProperty({ description: 'Sum of the deal values (₹/month) of those conversions.' })
+  @ApiProperty({
+    description:
+      'Sum of the effective monthly values (₹/month after discount) of those conversions.',
+  })
   revenue: number;
 
   @ApiProperty({

@@ -156,3 +156,19 @@ export enum LeaderboardPeriod {
   WEEK = 'week',
   MONTH = 'month',
 }
+
+/** leads.plan_code and plan_prices.plan — the Frostique plans (`08_deal_terms.sql`). */
+export enum PlanCode {
+  FREE = 'free',
+  GROWTH = 'growth',
+  GROWTH_PLUS = 'growth_plus',
+  PRO = 'pro',
+}
+
+/** leads.discount_type and offers.discount_type: a share of the deal, or rupees off it. */
+export enum DiscountType {
+  /** 0–100, up to two decimals, off the whole deal (price × tenure). */
+  PERCENT = 'percent',
+  /** Whole rupees off the whole deal. */
+  AMOUNT = 'amount',
+}

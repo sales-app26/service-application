@@ -90,13 +90,14 @@ describe('Sales insights (e2e)', () => {
       const res = await addLead(ravi, {
         status: 'interested',
         dealValue: 1499,
-        plan: '  Annual Gold ',
+        planCode: 'growth',
         source: 'walk_in',
       });
       expect(res.status).toBe(201);
       expect(res.body.data).toMatchObject({
         dealValue: 1499,
-        plan: 'Annual Gold',
+        plan: null,
+        planCode: 'growth',
         source: 'walk_in',
         createdBy: { id: ids.ravi, name: 'Ravi Kumar' },
       });
@@ -105,7 +106,7 @@ describe('Sales insights (e2e)', () => {
 
       // The list carries the same fields.
       const [row] = (await list(ravi, 'source=walk_in')).filter((l) => l.id === res.body.data.id);
-      expect(row).toMatchObject({ dealValue: 1499, plan: 'Annual Gold', source: 'walk_in' });
+      expect(row).toMatchObject({ dealValue: 1499, planCode: 'growth', source: 'walk_in' });
     });
 
     it('reads them from a multipart form, where every field is a string', async () => {
@@ -117,17 +118,17 @@ describe('Sales insights (e2e)', () => {
         note: 'Sent from the phone form.',
         clientRequestId: requestId(),
         dealValue: '1200',
-        plan: '',
+        planCode: '',
         reason: '',
         source: 'event',
       });
       expect(res.status).toBe(201);
-      expect(res.body.data).toMatchObject({ dealValue: 1200, plan: null, source: 'event' });
+      expect(res.body.data).toMatchObject({ dealValue: 1200, planCode: null, source: 'event' });
     });
 
     it('leaves them empty when not sent', async () => {
       const res = await addLead(ravi);
-      expect(res.body.data).toMatchObject({ dealValue: null, plan: null, source: null });
+      expect(res.body.data).toMatchObject({ dealValue: null, planCode: null, source: null });
     });
 
     it.each([
@@ -135,7 +136,8 @@ describe('Sales insights (e2e)', () => {
       ['a negative deal value', { dealValue: -1 }],
       ['a fractional deal value', { dealValue: 99.5 }],
       ['a deal value over 10 crore', { dealValue: 100_000_001 }],
-      ['a plan over 80 characters', { plan: 'x'.repeat(81) }],
+      ['an unknown plan', { planCode: 'gold' }],
+      ['free text for the plan, no longer written', { plan: 'Annual Gold' }],
       ['an unknown reason', { status: 'lost', reason: 'weather' }],
     ])('refuses %s', async (_, fields) => {
       const res = await addLead(ravi, fields);
@@ -154,15 +156,15 @@ describe('Sales insights (e2e)', () => {
     });
 
     it('lets the owner edit and clear them; an admin cannot, as with any lead field', async () => {
-      const lead = (await addLead(ravi, { dealValue: 500, plan: 'Basic', source: 'phone' })).body
-        .data;
+      const lead = (await addLead(ravi, { dealValue: 500, planCode: 'growth', source: 'phone' }))
+        .body.data;
+      // Any deal field replaces the whole deal: the plan left out is cleared.
       const res = await ravi.patch(`/leads/${lead.id}`, {
         dealValue: 750,
-        plan: null,
         source: 'referral',
       });
       expect(res.status).toBe(200);
-      expect(res.body.data).toMatchObject({ dealValue: 750, plan: null, source: 'referral' });
+      expect(res.body.data).toMatchObject({ dealValue: 750, planCode: null, source: 'referral' });
 
       const cleared = await ravi.patch(`/leads/${lead.id}`, { dealValue: null, source: null });
       expect(cleared.body.data).toMatchObject({ dealValue: null, source: null });
@@ -188,7 +190,7 @@ describe('Sales insights (e2e)', () => {
 
       const deal = await followUp(ravi, leadId, { status: 'interested', dealValue: 999 });
       expect(deal.status).toBe(400);
-      expect(deal.body.message).toBe('Deal value and plan can be added only when the lead is Won.');
+      expect(deal.body.message).toBe('Deal details can be added only when the lead is Won.');
 
       const manual = await changeStatus(ravi, leadId, { status: 'interested', reason: 'no_need' });
       expect(manual.status).toBe(400);
@@ -199,20 +201,22 @@ describe('Sales insights (e2e)', () => {
       const res = await followUp(ravi, leadId, {
         status: 'converted',
         dealValue: 2999,
-        plan: 'Pro',
+        planCode: 'pro',
       });
       expect(res.status).toBe(201);
       expect(res.body.data.lead).toMatchObject({
         status: 'converted',
         dealValue: 2999,
-        plan: 'Pro',
+        planCode: 'pro',
+        dealTotal: 2999,
+        effectiveMonthlyValue: 2999,
       });
       expect(Date.parse(res.body.data.lead.lastActivityAt)).toBeGreaterThan(Date.parse(before));
       expect(res.body.data.lead.lastActivityAt).toBe(res.body.data.entry.createdAt);
 
       // A later after-sale visit that sends no deal keeps it.
       const visit = await followUp(ravi, leadId, { status: 'converted' });
-      expect(visit.body.data.lead).toMatchObject({ dealValue: 2999, plan: 'Pro' });
+      expect(visit.body.data.lead).toMatchObject({ dealValue: 2999, planCode: 'pro' });
     });
 
     it('saves a lost reason on a status change', async () => {
@@ -543,16 +547,16 @@ describe('Sales insights (e2e)', () => {
         .trim()
         .split('\r\n');
 
-    it('adds deal value, plan, source and last activity to the leads file', async () => {
+    it('adds the deal, source and last activity to the leads file', async () => {
       const res = await admin.get(
         `/exports/leads?from=${today}&to=${today}&projectId=${projectId}`,
       );
       expect(res.status).toBe(200);
       const [header, ...rows] = lines(res.text);
       expect(header).toBe(
-        'Lead reference,Campaign,Contact person,Business name,Phone,Location,Stage,Next follow-up,Lead owner,Owner still on team,Won on (IST),Won by,Deal value (₹/month),Plan,Lead source,Added on (IST),Last changed (IST),Last activity (IST),Notes',
+        'Lead reference,Campaign,Contact person,Business name,Phone,Location,Stage,Next follow-up,Lead owner,Owner still on team,Won on (IST),Won by,Plan,Tenure (months),Monthly price (₹),Discount,Coupon,Deal total (₹),Monthly revenue after discount (₹),Lead source,Added on (IST),Last changed (IST),Last activity (IST),Notes',
       );
-      expect(rows.some((row) => row.includes(',2999,Pro,WhatsApp,'))).toBe(true);
+      expect(rows.some((row) => row.includes(',Pro,1,2999,,,2999,2999,WhatsApp,'))).toBe(true);
     });
 
     it('adds the reason to the follow-ups file', async () => {

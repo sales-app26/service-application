@@ -239,7 +239,30 @@ export const FOLLOW_UP_ERROR = {
     'This was already saved as a different follow-up. Please refresh and try again.',
   NOTHING_TO_UPDATE: 'Change the note or the next follow-up date, then save.',
   REASON_NOT_ALLOWED: 'A reason can be given only for Not interested or Lost.',
-  DEAL_ONLY_WHEN_CONVERTED: 'Deal value and plan can be added only when the lead is Won.',
+  DEAL_ONLY_WHEN_CONVERTED: 'Deal details can be added only when the lead is Won.',
+} as const;
+
+/** The deal on a lead: plan, tenure, price, offer or discount (`08_deal_terms.sql`). */
+export const DEAL_ERROR = {
+  FREE_HAS_NO_PRICE: 'The Free plan has no price, tenure or discount.',
+  OFFER_OR_DISCOUNT: 'Pick an offer or type a discount, not both.',
+  DISCOUNT_INCOMPLETE: 'Choose % off or ₹ off, and how much.',
+  DISCOUNT_NEEDS_PRICE: 'Enter the monthly price before adding a discount.',
+  COUPON_NEEDS_DISCOUNT: 'A coupon goes with a discount. Add the discount too.',
+  COUPON_FROM_OFFER: 'This offer fills in its own coupon.',
+  PERCENT_RANGE: 'A % discount must be between 0 and 100.',
+  AMOUNT_OVER_TOTAL: 'The ₹ discount can’t be more than the deal total.',
+  OFFER_ENDED: 'This offer has ended. Pick another offer or type the discount.',
+} as const;
+
+export const PRICING_ERROR = {
+  OFFER_NOT_FOUND: 'We couldn’t find this offer.',
+  OFFER_ENDS_BEFORE_START: 'The last day must be on or after the first day.',
+  PERCENT_RANGE: 'A % off must be more than 0 and at most 100.',
+  AMOUNT_WHOLE: 'A ₹ off must be whole rupees, more than 0.',
+  NOTHING_TO_UPDATE: 'Change something, then save.',
+  FREE_IS_FREE: 'The Free plan is always ₹0.',
+  PLAN_TWICE: 'Each plan can be priced once.',
 } as const;
 
 export const VISIT_ERROR = {
@@ -276,6 +299,7 @@ export const REPORT_ERROR = {
     'This report is too big (over 20,000 lines). Choose fewer days, one campaign or one person.',
   DASHBOARD_RANGE_TOO_LONG: `The sales overview can cover at most ${BUSINESS_RULE.DASHBOARD_MAX_DAYS} days.`,
   SUMMARY_RANGE_TOO_LONG: `A summary can cover at most ${BUSINESS_RULE.SUMMARY_MAX_DAYS} days.`,
+  SCORECARD_RANGE_TOO_LONG: `A scorecard or review can cover at most ${BUSINESS_RULE.DASHBOARD_MAX_DAYS} days.`,
   DATE_REQUIRED: 'Choose a start and end date.',
 } as const;
 
