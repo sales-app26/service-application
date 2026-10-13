@@ -7,6 +7,7 @@ import { Brackets, DataSource, In, IsNull, Repository, SelectQueryBuilder } from
 import {
   AUTO_REJECT_REASON,
   BUSINESS_RULE,
+  COVER_ERROR,
   DB_CONSTRAINT,
   ERROR_CODE,
   LEAD_ERROR,
@@ -19,6 +20,7 @@ import {
 import { AuthenticatedUser } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/dto';
 import {
+  CommentKind,
   EntryType,
   LeadDue,
   LeadStatus,
@@ -39,7 +41,8 @@ import {
   normaliseIndianMobile,
   phoneSearchDigits,
 } from '../../common/utils';
-import { FollowUp, Lead, LeadTransfer, User } from '../../database/entities';
+import { FollowUp, Lead, LeadComment, LeadTransfer, User } from '../../database/entities';
+import { CoverageService } from '../access/coverage.service';
 import { ProjectAccessService } from '../access/project-access.service';
 import { LocationsService } from '../locations/locations.service';
 import { TransferRejectionsService } from '../transfers/transfer-rejections.service';
@@ -53,6 +56,7 @@ import {
   LeadSort,
   LeadTransferRefDto,
   ListLeadsQueryDto,
+  PinnedCommentDto,
   UpdateLeadDto,
 } from './dto/lead.dto';
 import { EntryPresenter } from './entry.presenter';
@@ -87,7 +91,9 @@ export class LeadsService {
     @InjectRepository(FollowUp) private readonly followUps: Repository<FollowUp>,
     @InjectRepository(LeadTransfer) private readonly transfers: Repository<LeadTransfer>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(LeadComment) private readonly comments: Repository<LeadComment>,
     private readonly access: ProjectAccessService,
+    private readonly coverage: CoverageService,
     private readonly leadAccess: LeadAccessService,
     private readonly locations: LocationsService,
     private readonly visitProof: VisitProofService,
@@ -125,7 +131,7 @@ export class LeadsService {
     this.access.assertWritable(project);
 
     const phone = this.normalisePhone(dto.phone);
-    await this.assertPhoneFree(projectId, phone, actor.id);
+    await this.assertPhoneFree(projectId, phone, actor.id, { offerRequest: true });
     const locationName = this.locations.normaliseName(dto.location);
 
     const now = new Date();
@@ -225,7 +231,7 @@ export class LeadsService {
       // wins and the second gets the same message it would have had a second
       // later (PRD §5.5).
       if (isUniqueViolation(error, DB_CONSTRAINT.LEADS_PROJECT_PHONE)) {
-        await this.assertPhoneFree(projectId, phone, actor.id);
+        await this.assertPhoneFree(projectId, phone, actor.id, { offerRequest: true });
       }
       throw error;
     }
@@ -237,7 +243,9 @@ export class LeadsService {
 
   /**
    * A sales person sees only leads he owns. Admins see every lead in the
-   * project and can filter by owner or by "owner unavailable".
+   * project and can filter by owner or by "owner unavailable". A backup
+   * covering for an owner on leave asks for that owner's leads with
+   * `coveringFor`.
    */
   async list(
     actor: AuthenticatedUser,
@@ -246,6 +254,12 @@ export class LeadsService {
   ): Promise<PaginatedResponseDto<LeadSummaryDto>> {
     await this.access.assertCanView(actor, projectId);
     const isAdmin = await this.access.isAdminOf(actor, projectId);
+    if (
+      query.coveringFor &&
+      !(await this.coverage.covers(actor.id, query.coveringFor, projectId))
+    ) {
+      throw new ForbiddenBusinessException(COVER_ERROR.NOT_COVERING);
+    }
 
     const qb = this.leads
       .createQueryBuilder('l')
@@ -254,7 +268,9 @@ export class LeadsService {
       .where('l.project_id = :projectId', { projectId })
       .andWhere('l.deleted_at IS NULL');
 
-    if (!isAdmin || query.mine) {
+    if (query.coveringFor) {
+      qb.andWhere('l.owner_id = :coveredOwner', { coveredOwner: query.coveringFor });
+    } else if (!isAdmin || query.mine) {
       qb.andWhere('l.owner_id = :me', { me: actor.id });
     } else if (query.ownerId) {
       qb.andWhere('l.owner_id = :ownerId', { ownerId: query.ownerId });
@@ -320,7 +336,7 @@ export class LeadsService {
     const [summary] = await this.leadPresenter.summaries([lead], {
       showOwnerTags: visibility.isAdmin,
     });
-    const [entries, entryCount, pending, lastDecided, convertedBy] = await Promise.all([
+    const [entries, entryCount, pending, lastDecided, convertedBy, comments] = await Promise.all([
       this.followUps.find({
         where: { leadId, deletedAt: IsNull() },
         relations: { user: true, location: true },
@@ -344,6 +360,7 @@ export class LeadsService {
       lead.convertedBy
         ? this.users.findOne({ where: { id: lead.convertedBy } })
         : Promise.resolve(null),
+      this.commentSummary(leadId),
     ]);
 
     const projectOpen = lead.project.status === ProjectStatus.ACTIVE;
@@ -367,6 +384,38 @@ export class LeadsService {
       pendingTransfer: pending ? toTransferRef(pending) : null,
       lastDecidedTransfer: lastDecided ? toTransferRef(lastDecided) : null,
       permissions: this.permissions(actor, lead, visibility, projectOpen, pending !== null),
+      coveringFor: visibility.isCovering ? { id: lead.owner.id, name: lead.owner.name } : null,
+      ...comments,
+    };
+  }
+
+  /** The lead's comment count, whether help is waiting, and the newest pinned comment. */
+  private async commentSummary(
+    leadId: string,
+  ): Promise<{ openHelp: boolean; pinnedComment: PinnedCommentDto | null; commentCount: number }> {
+    const [commentCount, openHelp, pinned] = await Promise.all([
+      this.comments.count({ where: { leadId, deletedAt: IsNull() } }),
+      this.comments.exists({
+        where: { leadId, kind: CommentKind.HELP, resolvedAt: IsNull(), deletedAt: IsNull() },
+      }),
+      this.comments.findOne({
+        where: { leadId, pinned: true, deletedAt: IsNull() },
+        relations: { user: true },
+        order: { createdAt: 'DESC', id: 'DESC' },
+      }),
+    ]);
+
+    return {
+      openHelp,
+      commentCount,
+      pinnedComment: pinned
+        ? {
+            id: pinned.id,
+            body: pinned.body,
+            user: { id: pinned.user.id, name: pinned.user.name },
+            createdAt: pinned.createdAt,
+          }
+        : null,
     };
   }
 
@@ -416,7 +465,7 @@ export class LeadsService {
 
     const phone = dto.phone !== undefined ? this.normalisePhone(dto.phone) : undefined;
     if (phone !== undefined && phone !== lead.phone) {
-      await this.assertPhoneFree(lead.projectId, phone, actor.id, lead.id);
+      await this.assertPhoneFree(lead.projectId, phone, actor.id, { excludingLeadId: lead.id });
     }
     const locationName =
       dto.location !== undefined ? this.locations.normaliseName(dto.location) : undefined;
@@ -449,7 +498,7 @@ export class LeadsService {
       });
     } catch (error) {
       if (phone !== undefined && isUniqueViolation(error, DB_CONSTRAINT.LEADS_PROJECT_PHONE)) {
-        await this.assertPhoneFree(lead.projectId, phone, actor.id, lead.id);
+        await this.assertPhoneFree(lead.projectId, phone, actor.id, { excludingLeadId: lead.id });
       }
       throw error;
     }
@@ -524,23 +573,24 @@ export class LeadsService {
     projectId: string,
     phone: string,
     actorId: string,
-    excludingLeadId?: string,
+    options: { excludingLeadId?: string; offerRequest?: boolean } = {},
   ): Promise<void> {
     const existing = await this.leads.findOne({
       where: { projectId, phone, deletedAt: IsNull() },
       relations: { owner: true },
     });
-    if (!existing || existing.id === excludingLeadId) return;
+    if (!existing || existing.id === options.excludingLeadId) return;
 
     if (existing.ownerId === actorId) {
       throw new BusinessException(LEAD_ERROR.DUPLICATE_OWN, ERROR_CODE.DUPLICATE_LEAD_OWN, {
         leadId: existing.id,
       });
     }
+    // A member adding a lead can ask for this one instead (request-by-phone).
     throw new BusinessException(
       LEAD_ERROR.DUPLICATE_OTHER(existing.owner.name),
       ERROR_CODE.DUPLICATE_LEAD_OTHER,
-      { ownerName: existing.owner.name },
+      { ownerName: existing.owner.name, ...(options.offerRequest ? { canRequest: true } : {}) },
     );
   }
 
@@ -552,17 +602,19 @@ export class LeadsService {
     hasPendingTransfer: boolean,
   ): LeadPermissionsDto {
     const ownerWorks = visibility.isOwner && visibility.isMember;
-    const canChangeStatus = projectOpen && (ownerWorks || visibility.isAdmin);
+    const covering = visibility.isCovering;
+    const canChangeStatus = projectOpen && (ownerWorks || visibility.isAdmin || covering);
     const moderatorOwnsIt = actor.role === UserRole.MODERATOR && visibility.isOwner;
 
     return {
-      canLogFollowUp: projectOpen && ownerWorks,
+      canLogFollowUp: projectOpen && (ownerWorks || covering),
       canChangeStatus,
       canLeaveConverted: canChangeStatus && visibility.isAdmin,
       canEdit: projectOpen && ownerWorks,
       canRequestTransfer: projectOpen && ownerWorks && !hasPendingTransfer,
       canReassign: projectOpen && visibility.isAdmin && !moderatorOwnsIt,
       canDelete: actor.role === UserRole.SUPER_ADMIN,
+      covering,
     };
   }
 }

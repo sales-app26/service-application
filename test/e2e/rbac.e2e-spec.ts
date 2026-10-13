@@ -61,7 +61,7 @@ describe('Access control (e2e)', () => {
     // …but not to get a sign-in link for her, or switch her off everywhere.
     const link = await as.Meera.post(`/users/${ids.Sana}/reset-link`);
     expect(link.status).toBe(403);
-    expect(link.body.message).toContain('only the Super Admin');
+    expect(link.body.message).toContain('only the sales head');
     expect((await as.Meera.post(`/users/${ids.Sana}/deactivate`)).status).toBe(403);
 
     const listed = (await as.Meera.get('/users?limit=100')).body.data.items as Array<any>;

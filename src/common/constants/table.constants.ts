@@ -6,7 +6,7 @@
  */
 export const DB_SCHEMA = 'sales';
 
-/** Table names, one-for-one with `01_sales_schema.sql` (DB Design §2). */
+/** Table names, one-for-one with the `sql/` files (DB Design §2). */
 export const TABLE = {
   USERS: 'users',
   PROJECTS: 'projects',
@@ -17,6 +17,10 @@ export const TABLE = {
   LEAD_TRANSFERS: 'lead_transfers',
   APP_VERSIONS: 'app_versions',
   APP_VERSION_VIEWS: 'app_version_views',
+  USER_LEAVES: 'user_leaves',
+  LEAD_COMMENTS: 'lead_comments',
+  NOTIFICATIONS: 'notifications',
+  MESSAGE_TEMPLATES: 'message_templates',
 } as const;
 
 /**
@@ -57,4 +61,5 @@ export const DB_CONSTRAINT = {
   LEAD_TRANSFERS_ONE_PENDING: 'lead_transfers_one_pending_per_lead',
   PROJECT_MEMBERS_PROJECT_USER: 'project_members_project_user_key',
   APP_VERSIONS_VERSION: 'app_versions_version_key',
+  LEAD_COMMENTS_ONE_OPEN_HELP: 'lead_comments_one_open_help',
 } as const;

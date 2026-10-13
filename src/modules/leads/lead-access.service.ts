@@ -11,6 +11,7 @@ import {
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
 import { FollowUp, Lead, LeadTransfer, User } from '../../database/entities';
+import { CoverageService } from '../access/coverage.service';
 import { ProjectAccessService } from '../access/project-access.service';
 
 export interface LeadVisibility {
@@ -19,13 +20,16 @@ export interface LeadVisibility {
   isOwner: boolean;
   /** The caller is an active member of the project. */
   isMember: boolean;
+  /** The caller is the owner's backup and the owner is on leave today. */
+  isCovering: boolean;
 }
 
 /**
  * Who may see and touch one lead (BRD §2, FR-7).
  *
  *  - Admins of the project see every lead in it.
- *  - Everyone else sees only leads they own, and only while still a member.
+ *  - Everyone else sees only leads they own, and only while still a member —
+ *    and, while the owner is on leave, the backup covering for them.
  *
  * Anything else answers 404, so lead ids do not confirm their own existence —
  * with one deliberate exception from PRD §5.6: a former owner whose open form
@@ -39,6 +43,7 @@ export class LeadAccessService {
     @InjectRepository(LeadTransfer) private readonly transfers: Repository<LeadTransfer>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly access: ProjectAccessService,
+    private readonly coverage: CoverageService,
   ) {}
 
   /** A lead that is not deleted, with its project, owner and location. */
@@ -57,21 +62,39 @@ export class LeadAccessService {
     const isOwner = lead.ownerId === actor.id;
 
     if (this.access.isSuperAdmin(actor)) {
-      return { isAdmin: true, isOwner, isMember: false };
+      return { isAdmin: true, isOwner, isMember: false, isCovering: false };
     }
 
     const isMember = await this.access.isActiveMember(lead.projectId, actor.id);
     const isAdmin = isMember && actor.role === UserRole.MODERATOR;
-    return { isAdmin, isOwner, isMember };
+    const isCovering =
+      isMember && !isOwner && (await this.coverage.covers(actor.id, lead.ownerId, lead.projectId));
+    return { isAdmin, isOwner, isMember, isCovering };
   }
 
   /** The caller's visibility, or 404 when the lead is not theirs to see. */
   async assertVisible(actor: AuthenticatedUser, lead: Lead): Promise<LeadVisibility> {
     const visibility = await this.visibility(actor, lead);
-    if (visibility.isAdmin || (visibility.isOwner && visibility.isMember)) {
+    if (canSee(visibility)) {
       return visibility;
     }
     throw await this.notYoursError(actor, lead);
+  }
+
+  /**
+   * Whether someone other than the caller may open the lead — for deciding who
+   * a notification about it can go to. Deactivated people see nothing.
+   */
+  async canUserSee(
+    user: Pick<User, 'id' | 'role' | 'isActive'>,
+    lead: Pick<Lead, 'ownerId' | 'projectId'>,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    if (!user.isActive) return false;
+    if (user.role === UserRole.SUPER_ADMIN) return true;
+    if (!(await this.access.isActiveMember(lead.projectId, user.id, manager))) return false;
+    if (user.role === UserRole.MODERATOR || lead.ownerId === user.id) return true;
+    return this.coverage.covers(user.id, lead.ownerId, lead.projectId, manager);
   }
 
   /**
@@ -96,7 +119,7 @@ export class LeadAccessService {
     if (handedOver && lead.ownerId !== actor.id) {
       const owner = await users.findOne({ where: { id: lead.ownerId } });
       return new BusinessException(
-        FOLLOW_UP_ERROR.LEAD_TRANSFERRED(owner?.name ?? 'another member'),
+        FOLLOW_UP_ERROR.LEAD_TRANSFERRED(owner?.name ?? 'a teammate'),
         ERROR_CODE.LEAD_TRANSFERRED,
       );
     }
@@ -138,3 +161,7 @@ export class LeadAccessService {
     return existing;
   }
 }
+
+/** Admins see every lead in the project; the owner while he works there; a backup while covering. */
+const canSee = (visibility: LeadVisibility): boolean =>
+  visibility.isAdmin || (visibility.isOwner && visibility.isMember) || visibility.isCovering;

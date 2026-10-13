@@ -26,6 +26,8 @@ export const SQL_FILE = {
   SINGLE_USE_CAPTURE_DOWN: '04_single_use_capture_down.sql',
   SALES_INSIGHTS: '05_sales_insights.sql',
   SALES_INSIGHTS_DOWN: '05_sales_insights_down.sql',
+  TEAM_COLLABORATION: '06_team_collaboration.sql',
+  TEAM_COLLABORATION_DOWN: '06_team_collaboration_down.sql',
 } as const;
 
 export const readSqlFile = (fileName: string): string =>

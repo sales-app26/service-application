@@ -163,6 +163,27 @@ export class LeadPermissionsDto {
 
   @ApiProperty()
   canDelete: boolean;
+
+  @ApiProperty({
+    description:
+      'The caller is covering for the owner, who is on leave: he may log follow-ups and change the status, nothing else.',
+  })
+  covering: boolean;
+}
+
+/** The newest pinned comment, shown at the top of the lead. */
+export class PinnedCommentDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  body: string;
+
+  @ApiProperty({ type: PersonRefDto })
+  user: PersonRefDto;
+
+  @ApiProperty()
+  createdAt: Date;
 }
 
 export class LeadProjectRefDto {
@@ -212,6 +233,22 @@ export class LeadDetailDto extends LeadSummaryDto {
 
   @ApiProperty({ type: LeadPermissionsDto })
   permissions: LeadPermissionsDto;
+
+  @ApiPropertyOptional({
+    type: PersonRefDto,
+    nullable: true,
+    description: 'The owner, when the caller is covering for them while they are on leave.',
+  })
+  coveringFor: PersonRefDto | null;
+
+  @ApiProperty({ description: 'A help request on this lead is waiting to be resolved.' })
+  openHelp: boolean;
+
+  @ApiPropertyOptional({ type: PinnedCommentDto, nullable: true })
+  pinnedComment: PinnedCommentDto | null;
+
+  @ApiProperty({ description: 'Comments on the lead, every kind, not counting deleted ones.' })
+  commentCount: number;
 }
 
 /** A new lead and its first follow-up, in one form (PRD §5.5). */
@@ -355,6 +392,15 @@ export class ListLeadsQueryDto extends PaginationQueryDto {
   @Transform(toBoolean)
   @IsBoolean()
   mine?: boolean;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'The leads of this owner, whom the caller is covering for today (403 otherwise). Other filters still apply.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  coveringFor?: string;
 
   @ApiPropertyOptional({ description: 'Admins: only leads whose owner is deactivated or removed.' })
   @IsOptional()

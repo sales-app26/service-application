@@ -16,7 +16,7 @@ import {
   ForbiddenBusinessException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
-import { Project, ProjectMember } from '../../database/entities';
+import { Project, ProjectMember, User } from '../../database/entities';
 
 /**
  * Who may see and act in which project (BRD §2).
@@ -111,6 +111,33 @@ export class ProjectAccessService {
       )
       .getRawMany<{ userId: string }>();
     return new Set(rows.map((r) => r.userId));
+  }
+
+  /**
+   * Whether the caller may manage this person (BRD §2): the Super Admin anyone;
+   * a moderator a sales person he created or shares an active project with.
+   * Users, leave and backups all apply this one rule.
+   */
+  async canManagePerson(
+    actor: AuthenticatedUser,
+    person: Pick<User, 'id' | 'role' | 'createdBy'>,
+  ): Promise<boolean> {
+    if (this.isSuperAdmin(actor)) return true;
+    if (actor.role !== UserRole.MODERATOR || person.role !== UserRole.SALES_PERSON) return false;
+    return person.createdBy === actor.id || (await this.shareActiveProject(actor.id, person.id));
+  }
+
+  /**
+   * {@link canManagePerson} as SQL over a `users` alias, for lists: `$n` is the
+   * moderator's id.
+   */
+  manageablePersonSql(userAlias: string, moderatorParam: string): string {
+    return `(${userAlias}.role = '${UserRole.SALES_PERSON}' AND (${userAlias}.created_by = ${moderatorParam}
+              OR EXISTS (SELECT 1 FROM ${SQL_TABLE.PROJECT_MEMBERS} ma
+                           JOIN ${SQL_TABLE.PROJECT_MEMBERS} mb
+                             ON mb.project_id = ma.project_id AND mb.is_active
+                          WHERE ma.user_id = ${moderatorParam} AND ma.is_active
+                            AND mb.user_id = ${userAlias}.id)))`;
   }
 
   /** TRUE when the person is, or was, a member of a project the moderator is active in. */

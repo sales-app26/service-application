@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './guards/auth.guard';
+import { PasswordChangeApprovalService } from './password-change-approval.service';
 import { TokenVerifierService } from './token-verifier.service';
 
 /**
@@ -12,7 +13,7 @@ import { TokenVerifierService } from './token-verifier.service';
 @Global()
 @Module({
   controllers: [AuthController],
-  providers: [AuthService, TokenVerifierService, AuthGuard],
+  providers: [AuthService, TokenVerifierService, AuthGuard, PasswordChangeApprovalService],
   exports: [TokenVerifierService, AuthGuard],
 })
 export class AuthModule {}

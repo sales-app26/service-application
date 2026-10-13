@@ -9,6 +9,7 @@ import {
   ParseFilePipe,
   Patch,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseInterceptors,
@@ -42,6 +43,7 @@ import {
   ListMembersQueryDto,
   MemberDto,
   MemberParamsDto,
+  SetBackupDto,
   SetTargetDto,
 } from './dto/member.dto';
 import {
@@ -268,5 +270,23 @@ export class ProjectsController {
     @Body() dto: SetTargetDto,
   ): Promise<MemberDto> {
     return this.membersService.setTarget(actor, params.id, params.userId, dto);
+  }
+
+  @Put(`${ROUTE.ID_PARAM}/members/:userId/backup`)
+  @ApiTags(SWAGGER_TAG.MEMBERS, SWAGGER_TAG.LEAVES)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MODERATOR)
+  @ResponseMessage(SUCCESS_MESSAGE.BACKUP_UPDATED)
+  @ApiOperation({
+    summary: 'Set or clear a member’s backup',
+    description:
+      'The backup covers this member’s follow-ups in this project while he is on leave. An active member of the same project, not the member himself and not a Super Admin (`422`). A moderator sets backups for sales persons in his project and for himself. Removing someone from the project clears every backup pointing to him there.',
+  })
+  @ApiOkEnvelope(MemberDto)
+  setBackup(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: MemberParamsDto,
+    @Body() dto: SetBackupDto,
+  ): Promise<MemberDto> {
+    return this.membersService.setBackup(actor, params.id, params.userId, dto);
   }
 }

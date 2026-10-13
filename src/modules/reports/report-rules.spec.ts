@@ -132,4 +132,20 @@ describe('rankAttention', () => {
     );
     expect(ranked.map((r) => r.user?.name)).toEqual(['Meera', 'Karan', 'Priya', 'Ravi']);
   });
+
+  it('ranks a help request above anything short of an extreme, older ones first', () => {
+    const fresh = attentionSeverity(AttentionKind.HELP_REQUEST, 0);
+    const dayOld = attentionSeverity(AttentionKind.HELP_REQUEST, 24);
+    expect(fresh).toBe(10);
+    expect(dayOld).toBe(11);
+    // 45 overdue leads — nine times the threshold — still rank below a fresh request.
+    expect(fresh).toBeGreaterThan(attentionSeverity(AttentionKind.OVERDUE_PILE, 45));
+
+    const ranked = rankAttention([
+      { severity: 3, item: item(AttentionKind.BEHIND_TARGET, 'Meera') },
+      { severity: fresh, item: item(AttentionKind.HELP_REQUEST, 'Ravi') },
+      { severity: dayOld, item: item(AttentionKind.HELP_REQUEST, 'Asha') },
+    ]);
+    expect(ranked.map((r) => r.user?.name)).toEqual(['Asha', 'Ravi', 'Meera']);
+  });
 });

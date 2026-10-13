@@ -2,24 +2,38 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 
-import { AUTO_REJECT_REASON, ERROR_CODE, SQL_TABLE, TRANSFER_ERROR } from '../../common/constants';
+import {
+  AUTO_REJECT_REASON,
+  ERROR_CODE,
+  LEAD_ERROR,
+  NOTIFICATION_LINK,
+  NOTIFICATION_TEXT,
+  SQL_TABLE,
+  TRANSFER_ERROR,
+} from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/dto';
-import { TransferStatus, UserRole } from '../../common/enums';
+import { CommentKind, NotificationKind, TransferStatus, UserRole } from '../../common/enums';
 import {
   BusinessException,
   ForbiddenBusinessException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
-import { Lead, LeadTransfer, User } from '../../database/entities';
+import { normaliseIndianMobile } from '../../common/utils';
+import { Lead, LeadComment, LeadTransfer, User } from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
 import { LeadAccessService } from '../leads/lead-access.service';
+import {
+  NotificationInput,
+  NotificationSenderService,
+} from '../notifications/notification-sender.service';
 import {
   BulkReassignDto,
   DecideTransferDto,
   ListTransfersQueryDto,
   PendingCountDto,
   ReassignResultDto,
+  RequestByPhoneDto,
   RequestTransferDto,
   TransferDto,
 } from './dto/transfer.dto';
@@ -33,6 +47,11 @@ import { TransferRejectionsService } from './transfer-rejections.service';
  * reassignment by an admin is the same row, created already approved.
  * Conversion credit never moves with the lead: `converted_by` keeps whoever
  * converted it.
+ *
+ * A member can also ask for a lead someone else owns, found by its phone: the
+ * same pending row, from the owner to him. Admins hear about every request,
+ * the people involved about every decision, and a new owner about every lead
+ * he receives — never the actor about his own action.
  */
 @Injectable()
 export class TransfersService {
@@ -43,6 +62,7 @@ export class TransfersService {
     private readonly access: ProjectAccessService,
     private readonly leadAccess: LeadAccessService,
     private readonly transferRejections: TransferRejectionsService,
+    private readonly notifications: NotificationSenderService,
   ) {}
 
   // ------------------------------------------------------------------ request
@@ -66,28 +86,128 @@ export class TransfersService {
       if (locked.ownerId !== actor.id) {
         throw await this.leadAccess.notYoursError(actor, locked, manager);
       }
-      await this.assertRecipient(manager, locked, dto.toUserId);
-
-      if (
-        await manager.exists(LeadTransfer, { where: { leadId, status: TransferStatus.PENDING } })
-      ) {
-        throw new BusinessException(TRANSFER_ERROR.PENDING_EXISTS, ERROR_CODE.TRANSFER_PENDING);
-      }
-
-      const saved = await manager.save(
-        manager.create(LeadTransfer, {
-          leadId,
-          fromUserId: actor.id,
-          toUserId: dto.toUserId,
-          reason: dto.reason,
-          status: TransferStatus.PENDING,
-          requestedBy: actor.id,
-        }),
-      );
-      return saved.id;
+      const recipient = await this.assertRecipient(manager, locked, dto.toUserId);
+      const transferId = await this.createPending(manager, actor, locked, recipient, dto.reason);
+      await this.writeHandover(manager, actor, [locked], dto.handoverNote);
+      return transferId;
     });
 
     return this.findOne(actor, transferId);
+  }
+
+  /**
+   * A member asks for a lead someone else owns in this project, found by its
+   * phone — the next step after "This number is already a lead, owned by …".
+   * The same pending transfer an owner would request, from the owner to the
+   * caller; an admin decides it.
+   */
+  async requestByPhone(
+    actor: AuthenticatedUser,
+    projectId: string,
+    dto: RequestByPhoneDto,
+  ): Promise<TransferDto> {
+    const project = await this.access.assertWorker(actor, projectId);
+    this.access.assertWritable(project);
+
+    const phone = normaliseIndianMobile(dto.phone);
+    if (!phone) {
+      throw new BusinessException(LEAD_ERROR.INVALID_PHONE, ERROR_CODE.VALIDATION_FAILED);
+    }
+
+    const transferId = await this.dataSource.transaction(async (manager) => {
+      await this.access.lockOpenProject(manager, projectId);
+      const lead = await manager
+        .getRepository(Lead)
+        .createQueryBuilder('l')
+        .setLock('pessimistic_write')
+        .where('l.project_id = :projectId AND l.phone = :phone', { projectId, phone })
+        .andWhere('l.deleted_at IS NULL')
+        .getOne();
+      if (!lead) {
+        throw new NotFoundBusinessException(LEAD_ERROR.NOT_FOUND);
+      }
+      if (lead.ownerId === actor.id) {
+        throw new BusinessException(LEAD_ERROR.DUPLICATE_OWN, ERROR_CODE.DUPLICATE_LEAD_OWN, {
+          leadId: lead.id,
+        });
+      }
+
+      const recipient = await this.assertRecipient(manager, lead, actor.id);
+      return this.createPending(manager, actor, lead, recipient, dto.reason);
+    });
+
+    return this.findOne(actor, transferId);
+  }
+
+  /**
+   * One pending transfer of a locked lead from its owner to `recipient`, and a
+   * `transfer_requested` notification to the project's admins.
+   */
+  private async createPending(
+    manager: EntityManager,
+    actor: AuthenticatedUser,
+    lead: Lead,
+    recipient: User,
+    reason: string,
+  ): Promise<string> {
+    if (
+      await manager.exists(LeadTransfer, {
+        where: { leadId: lead.id, status: TransferStatus.PENDING },
+      })
+    ) {
+      throw new BusinessException(TRANSFER_ERROR.PENDING_EXISTS, ERROR_CODE.TRANSFER_PENDING);
+    }
+
+    const saved = await manager.save(
+      manager.create(LeadTransfer, {
+        leadId: lead.id,
+        fromUserId: lead.ownerId,
+        toUserId: recipient.id,
+        reason,
+        status: TransferStatus.PENDING,
+        requestedBy: actor.id,
+      }),
+    );
+
+    const admins = await this.notifications.projectAdminIds(lead.projectId, manager);
+    await this.notifications.send(
+      manager,
+      actor.id,
+      admins.map((userId) => ({
+        userId,
+        kind: NotificationKind.TRANSFER_REQUESTED,
+        title:
+          recipient.id === actor.id
+            ? NOTIFICATION_TEXT.LEAD_REQUESTED_TITLE(actor.name, lead.name)
+            : NOTIFICATION_TEXT.TRANSFER_REQUESTED_TITLE(actor.name, lead.name, recipient.name),
+        body: reason,
+        link: NOTIFICATION_LINK.TRANSFERS,
+        leadId: lead.id,
+      })),
+    );
+    return saved.id;
+  }
+
+  /** The handover note, pinned on each lead for its next owner. */
+  private async writeHandover(
+    manager: EntityManager,
+    actor: AuthenticatedUser,
+    leads: Lead[],
+    note: string | null | undefined,
+  ): Promise<void> {
+    if (!note || leads.length === 0) return;
+    await manager.insert(
+      LeadComment,
+      leads.map((lead) => ({
+        leadId: lead.id,
+        projectId: lead.projectId,
+        userId: actor.id,
+        kind: CommentKind.HANDOVER,
+        body: note,
+        mentionIds: [],
+        pinned: true,
+      })),
+    );
   }
 
   // ----------------------------------------------------------------- decision
@@ -141,19 +261,20 @@ export class TransfersService {
           ? await manager.findOne(User, { where: { id: locked.decidedBy } })
           : null;
         throw new BusinessException(
-          TRANSFER_ERROR.ALREADY_DECIDED(decider?.name ?? 'another admin'),
+          TRANSFER_ERROR.ALREADY_DECIDED(decider?.name ?? TRANSFER_ERROR.ANOTHER_MANAGER),
           ERROR_CODE.TRANSFER_ALREADY_DECIDED,
           { status: locked.status },
         );
       }
 
+      let recipient: User | null = null;
       if (decision === TransferStatus.APPROVED) {
         await this.access.lockOpenProject(manager, transfer.lead.projectId);
         const lead = await this.leadAccess.lockLead(manager, locked.leadId);
         if (lead.ownerId !== locked.fromUserId) {
           throw new BusinessException(TRANSFER_ERROR.OWNER_CHANGED, ERROR_CODE.CONFLICT);
         }
-        await this.assertRecipient(manager, lead, locked.toUserId);
+        recipient = await this.assertRecipient(manager, lead, locked.toUserId);
         // Ownership only. The conversion credit stays with whoever converted it,
         // and a due follow-up moves to the new owner's Due today list.
         await manager.update(Lead, { id: lead.id }, { ownerId: locked.toUserId });
@@ -164,9 +285,54 @@ export class TransfersService {
         { id: locked.id },
         { status: decision, decidedBy: actor.id, decidedAt: new Date(), decisionNote: note },
       );
+
+      recipient ??= await manager.findOneOrFail(User, { where: { id: locked.toUserId } });
+      await this.notifyDecision(manager, actor, transfer.lead, locked, decision, recipient, note);
     });
 
     return this.findOne(actor, transferId);
+  }
+
+  /**
+   * The new owner learns the lead is his (`lead_assigned`); the requester and
+   * the previous owner learn the decision (`transfer_decided`). One each.
+   */
+  private async notifyDecision(
+    manager: EntityManager,
+    actor: AuthenticatedUser,
+    lead: Lead,
+    transfer: LeadTransfer,
+    decision: TransferStatus.APPROVED | TransferStatus.REJECTED,
+    recipient: User,
+    note: string | null,
+  ): Promise<void> {
+    const link = NOTIFICATION_LINK.LEAD(lead.id);
+    const items: NotificationInput[] = [];
+    if (decision === TransferStatus.APPROVED) {
+      items.push({
+        userId: transfer.toUserId,
+        kind: NotificationKind.LEAD_ASSIGNED,
+        title: NOTIFICATION_TEXT.LEAD_ASSIGNED_TITLE(actor.name, lead.name),
+        body: note,
+        link,
+        leadId: lead.id,
+      });
+    }
+    const title =
+      decision === TransferStatus.APPROVED
+        ? NOTIFICATION_TEXT.TRANSFER_APPROVED_TITLE(actor.name, lead.name, recipient.name)
+        : NOTIFICATION_TEXT.TRANSFER_REJECTED_TITLE(actor.name, lead.name, recipient.name);
+    for (const userId of [transfer.requestedBy, transfer.fromUserId]) {
+      items.push({
+        userId,
+        kind: NotificationKind.TRANSFER_DECIDED,
+        title,
+        body: note,
+        link,
+        leadId: lead.id,
+      });
+    }
+    await this.notifications.send(manager, actor.id, items);
   }
 
   // --------------------------------------------------------------- reassign
@@ -228,7 +394,9 @@ export class TransfersService {
         throw new ForbiddenBusinessException(TRANSFER_ERROR.SELF_REASSIGN);
       }
 
-      await this.assertRecipient(manager, leads[0], dto.toUserId, { allowCurrentOwner: true });
+      const recipient = await this.assertRecipient(manager, leads[0], dto.toUserId, {
+        allowCurrentOwner: true,
+      });
 
       const moving = leads.filter((lead) => lead.ownerId !== dto.toUserId);
       if (moving.length === 0) {
@@ -263,6 +431,31 @@ export class TransfersService {
         .set({ ownerId: dto.toUserId })
         .where('id IN (:...movingIds)', { movingIds })
         .execute();
+      await this.writeHandover(manager, actor, moving, dto.handoverNote);
+
+      // One notification for the new owner, naming the lead when there is one.
+      await this.notifications.send(manager, actor.id, [
+        moving.length === 1
+          ? {
+              userId: recipient.id,
+              kind: NotificationKind.LEAD_ASSIGNED,
+              title: NOTIFICATION_TEXT.LEAD_ASSIGNED_TITLE(actor.name, moving[0].name),
+              body: dto.reason,
+              link: NOTIFICATION_LINK.LEAD(moving[0].id),
+              leadId: moving[0].id,
+            }
+          : {
+              userId: recipient.id,
+              kind: NotificationKind.LEAD_ASSIGNED,
+              title: NOTIFICATION_TEXT.LEADS_ASSIGNED_TITLE(
+                actor.name,
+                moving.length,
+                project.name,
+              ),
+              body: dto.reason,
+              link: NOTIFICATION_LINK.LEADS,
+            },
+      ]);
 
       return { reassigned: moving.length, skipped: leads.length - moving.length };
     });
@@ -271,8 +464,9 @@ export class TransfersService {
   // -------------------------------------------------------------------- reads
 
   /**
-   * Admins: transfers on leads in their projects. Sales persons: the
-   * requests they made, so they see each decision and who made it.
+   * Admins: transfers on leads in their projects. Sales persons: transfers
+   * they made, of their leads, or to them — so they see each decision and who
+   * made it, including a lead they asked for by phone.
    */
   async list(
     actor: AuthenticatedUser,
@@ -350,9 +544,10 @@ export class TransfersService {
       return;
     }
 
-    qb.andWhere('(t.from_user_id = :scopeUserId OR t.requested_by = :scopeUserId)', {
-      scopeUserId: actor.id,
-    });
+    qb.andWhere(
+      '(t.from_user_id = :scopeUserId OR t.to_user_id = :scopeUserId OR t.requested_by = :scopeUserId)',
+      { scopeUserId: actor.id },
+    );
   }
 
   /** Admin of the lead's project, and not a party to the request. */
@@ -378,7 +573,7 @@ export class TransfersService {
     lead: Lead,
     toUserId: string,
     options: { allowCurrentOwner?: boolean } = {},
-  ): Promise<void> {
+  ): Promise<User> {
     if (!options.allowCurrentOwner && lead.ownerId === toUserId) {
       throw new BusinessException(TRANSFER_ERROR.RECIPIENT_INVALID, ERROR_CODE.UNPROCESSABLE);
     }
@@ -393,6 +588,7 @@ export class TransfersService {
     if (!valid) {
       throw new BusinessException(TRANSFER_ERROR.RECIPIENT_INVALID, ERROR_CODE.UNPROCESSABLE);
     }
+    return recipient;
   }
 
   private toDto(

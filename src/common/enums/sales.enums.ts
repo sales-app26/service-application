@@ -117,10 +117,42 @@ export enum AttentionKind {
   OVERDUE_PILE = 'overdue_pile',
   IDLE = 'idle',
   STALE_TRANSFER = 'stale_transfer',
+  /** An open help request on a lead (`lead_comments` kind `help`). */
+  HELP_REQUEST = 'help_request',
 }
 
 /** How the dashboard trend is bucketed: by India day, or by Monday–Sunday week for long ranges. */
 export enum TrendBucket {
   DAY = 'day',
   WEEK = 'week',
+}
+
+/** lead_comments.kind (`06_team_collaboration.sql`). */
+export enum CommentKind {
+  COMMENT = 'comment',
+  /** The owner or a backup asks the project's moderators for help. One open per lead. */
+  HELP = 'help',
+  /** An admin's note on one entry. */
+  FEEDBACK = 'feedback',
+  /** Written with a transfer or reassignment, pinned for the next owner. */
+  HANDOVER = 'handover',
+}
+
+/** notifications.kind — what the bell item is about. */
+export enum NotificationKind {
+  TRANSFER_REQUESTED = 'transfer_requested',
+  TRANSFER_DECIDED = 'transfer_decided',
+  LEAD_ASSIGNED = 'lead_assigned',
+  MENTION = 'mention',
+  HELP_REQUESTED = 'help_requested',
+  HELP_RESOLVED = 'help_resolved',
+  COMMENT = 'comment',
+  FEEDBACK = 'feedback',
+  LEAVE_COVER = 'leave_cover',
+}
+
+/** The project leaderboard's window: this Monday–Sunday week or calendar month, IST. */
+export enum LeaderboardPeriod {
+  WEEK = 'week',
+  MONTH = 'month',
 }

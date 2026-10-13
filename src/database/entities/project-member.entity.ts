@@ -41,6 +41,17 @@ export class ProjectMember {
   @Column({ name: 'is_active', type: PG_TYPE.BOOLEAN, default: true })
   isActive: boolean;
 
+  /**
+   * Who covers this member's follow-ups here while they are on leave: an
+   * active member of the same project, never the member himself.
+   */
+  @Column({ name: 'backup_user_id', type: PG_TYPE.UUID, nullable: true })
+  backupUserId: string | null;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'backup_user_id' })
+  backupUser: User | null;
+
   /** Same as `user_id` when a moderator assigns the project to himself. */
   @Column({ name: 'assigned_by', type: PG_TYPE.UUID, nullable: true })
   assignedBy: string | null;

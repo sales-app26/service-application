@@ -23,5 +23,6 @@ import { TimelineService } from './timeline.service';
     DashboardService,
     ExportsService,
   ],
+  exports: [TargetsService],
 })
 export class ReportsModule {}

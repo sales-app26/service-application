@@ -17,6 +17,7 @@ import {
 import { AuthenticatedUser } from '../../common/decorators';
 import {
   AttentionKind,
+  CommentKind,
   EntryType,
   FunnelStage,
   LeadSource,
@@ -235,7 +236,8 @@ export class DashboardService {
    * Active members of active projects with no entry of any kind today
    * (DB Design §5). Deactivated and removed members are left out; so is a
    * moderator who only supervises — one who owns no leads in the project
-   * (Assumption 11). Someone who joined today is included until they log.
+   * (Assumption 11) — and anyone on leave today. Someone who joined today is
+   * included until they log.
    */
   private async loggedNothingToday(
     scope: string[] | null,
@@ -260,9 +262,18 @@ export class DashboardService {
                    AND f.deleted_at IS NULL
                    AND f.created_at >= $5 AND f.created_at < $6
                    AND ($2::uuid[] IS NULL OR f.project_id = ANY($2::uuid[])))
+          AND NOT ${onLeaveSql('pm.user_id', '$7')}
         GROUP BY pm.user_id, u.name, u.role
         ORDER BY u.name`,
-      [ProjectStatus.ACTIVE, scope, userId, UserRole.MODERATOR, todayStart, todayEnd],
+      [
+        ProjectStatus.ACTIVE,
+        scope,
+        userId,
+        UserRole.MODERATOR,
+        todayStart,
+        todayEnd,
+        istToday(todayStart),
+      ],
     )) as Array<{ user_id: string; name: string; role: UserRole; projects: string[] }>;
 
     return rows.map((row) => ({
@@ -535,10 +546,11 @@ export class DashboardService {
   // ---------------------------------------------------------- needs attention
 
   /**
-   * What an admin should look at right now, whatever the date range: people
-   * behind on their target, piles of overdue leads, people who have logged
-   * nothing for two days, and transfers nobody has decided. Ranked by how far
-   * past its threshold each one is (`report-rules.ts`).
+   * What an admin should look at right now, whatever the date range: open
+   * help requests, people behind on their target, piles of overdue leads,
+   * people who have logged nothing for two days (unless on leave), and
+   * transfers nobody has decided. Ranked by how far past its threshold each
+   * one is (`report-rules.ts`), help requests first.
    */
   private async needsAttention(
     scope: string[] | null,
@@ -546,10 +558,11 @@ export class DashboardService {
     targets: TargetProgressDto[],
     now: Date,
   ): Promise<AttentionItemDto[]> {
-    const [piles, idle, transfers] = await Promise.all([
+    const [piles, idle, transfers, help] = await Promise.all([
       this.overduePiles(scope, userId, istToday(now)),
       this.idleWorkers(scope, userId, now),
       this.staleTransfers(scope, userId, now),
+      this.openHelpRequests(scope, userId, now),
     ]);
 
     const scored: ScoredAttention[] = [];
@@ -583,7 +596,7 @@ export class DashboardService {
         },
       });
     }
-    scored.push(...idle, ...transfers);
+    scored.push(...idle, ...transfers, ...help);
 
     return rankAttention(scored);
   }
@@ -619,7 +632,7 @@ export class DashboardService {
    * Working members — sales persons and moderators who own leads in an active
    * project — with no entry in scope for `ATTENTION_IDLE_DAYS` India days.
    * Someone who never logged is counted from the day they joined, so a new
-   * member is not flagged on day one.
+   * member is not flagged on day one; someone on leave today is not flagged.
    */
   private async idleWorkers(
     scope: string[] | null,
@@ -645,6 +658,7 @@ export class DashboardService {
           AND EXISTS (
                 SELECT 1 FROM ${SQL_TABLE.LEADS} l
                  WHERE l.project_id = pm.project_id AND l.owner_id = pm.user_id AND l.deleted_at IS NULL)
+          AND NOT ${onLeaveSql('pm.user_id', '$6')}
         GROUP BY pm.user_id, u.name`,
       [
         ProjectStatus.ACTIVE,
@@ -652,6 +666,7 @@ export class DashboardService {
         userId,
         [UserRole.SALES_PERSON, UserRole.MODERATOR],
         TERMINAL_STATUSES,
+        istToday(now),
       ],
     )) as Array<{
       user_id: string;
@@ -726,6 +741,59 @@ export class DashboardService {
       };
     });
   }
+
+  /**
+   * Help requests nobody has resolved yet, on live leads in active projects in
+   * scope. With a person filter, those that person asked or that are on his
+   * leads.
+   */
+  private async openHelpRequests(
+    scope: string[] | null,
+    userId: string | null,
+    now: Date,
+  ): Promise<ScoredAttention[]> {
+    const rows = (await this.dataSource.query(
+      `SELECT c.created_at, c.lead_id, l.name AS lead_name, p.name AS project_name,
+              u.id AS user_id, u.name AS user_name
+         FROM ${SQL_TABLE.LEAD_COMMENTS} c
+         JOIN ${SQL_TABLE.LEADS} l ON l.id = c.lead_id AND l.deleted_at IS NULL
+         JOIN ${SQL_TABLE.PROJECTS} p ON p.id = c.project_id AND p.status = $1
+         JOIN ${SQL_TABLE.USERS} u ON u.id = c.user_id
+        WHERE c.kind = $2 AND c.resolved_at IS NULL AND c.deleted_at IS NULL
+          AND ($3::uuid[] IS NULL OR c.project_id = ANY($3::uuid[]))
+          AND ($4::uuid IS NULL OR $4::uuid IN (c.user_id, l.owner_id))
+        ORDER BY c.created_at
+        LIMIT ${BUSINESS_RULE.ATTENTION_LIST_LIMIT}`,
+      [ProjectStatus.ACTIVE, CommentKind.HELP, scope, userId],
+    )) as Array<{
+      created_at: Date;
+      lead_id: string;
+      lead_name: string;
+      project_name: string;
+      user_id: string;
+      user_name: string;
+    }>;
+
+    return rows.map((row) => ({
+      severity: attentionSeverity(
+        AttentionKind.HELP_REQUEST,
+        (now.getTime() - row.created_at.getTime()) / HOUR_MS,
+      ),
+      item: {
+        kind: AttentionKind.HELP_REQUEST,
+        user: { id: row.user_id, name: row.user_name },
+        projectName: row.project_name,
+        detail: ATTENTION_DETAIL.HELP_REQUEST(row.lead_name),
+        leadId: row.lead_id,
+      },
+    }));
+  }
 }
 
 const sum = (rows: CountByUser[]): number => rows.reduce((total, row) => total + row.count, 0);
+
+/** SQL: the person in `userColumn` has an active leave covering the India date in `dateParam`. */
+const onLeaveSql = (userColumn: string, dateParam: string): string =>
+  `EXISTS (SELECT 1 FROM ${SQL_TABLE.USER_LEAVES} lv
+            WHERE lv.user_id = ${userColumn} AND lv.cancelled_at IS NULL
+              AND lv.starts_on <= ${dateParam}::date AND lv.ends_on >= ${dateParam}::date)`;

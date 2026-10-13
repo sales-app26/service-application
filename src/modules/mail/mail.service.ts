@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { CONFIG_NAMESPACE, ERROR_CODE } from '../../common/constants';
+import { COMMON_ERROR, CONFIG_NAMESPACE, ERROR_CODE } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { MailConfig } from '../../config/configuration';
 
@@ -36,7 +36,7 @@ export class MailService {
         ? {
             subject: `You're invited to ${this.config.fromName}`,
             heading: `Welcome${to.name ? `, ${to.name}` : ''}!`,
-            body: `You've been added to ${this.config.fromName}. Choose a password to sign in.`,
+            body: `You've been added to the ${this.config.fromName} team. Choose a password to sign in and start working your leads.`,
             button: 'Choose a password',
           }
         : {
@@ -93,7 +93,7 @@ export class MailService {
 
 const unavailable = (): BusinessException =>
   new BusinessException(
-    'The email could not be sent. Please try again in a minute.',
+    COMMON_ERROR.EMAIL_NOT_SENT,
     ERROR_CODE.INTEGRATION_ERROR,
     undefined,
     HttpStatus.SERVICE_UNAVAILABLE,

@@ -18,6 +18,11 @@ export const SWAGGER_TAG = {
   DASHBOARD: 'Dashboard',
   EXPORTS: 'Exports',
   VERSIONS: 'Versions',
+  LEAVES: 'Leave & cover',
+  COMMENTS: 'Lead comments & help',
+  NOTIFICATIONS: 'Notifications',
+  TEAM: 'Team',
+  TEMPLATES: 'Message templates',
 } as const;
 
 export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
@@ -36,6 +41,13 @@ export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
   [SWAGGER_TAG.DASHBOARD]: 'Admin numbers: targets, activity, statuses, conversions.',
   [SWAGGER_TAG.EXPORTS]: 'CSV exports for the current filters.',
   [SWAGGER_TAG.VERSIONS]: 'Release notes: what changed in each version, and who has read it.',
+  [SWAGGER_TAG.LEAVES]:
+    'Who is away, and the backup who covers their follow-ups in each project meanwhile.',
+  [SWAGGER_TAG.COMMENTS]:
+    'Comments, mentions, help requests, feedback on entries and handover notes on a lead.',
+  [SWAGGER_TAG.NOTIFICATIONS]: 'The signed-in person’s in-app notifications. Private to them.',
+  [SWAGGER_TAG.TEAM]: 'The team roster and the project leaderboard.',
+  [SWAGGER_TAG.TEMPLATES]: 'Canned messages for a project, with {client}, {rep} and {business}.',
 };
 
 export const SWAGGER_RESPONSE = {

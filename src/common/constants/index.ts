@@ -4,3 +4,4 @@ export * from './config.constants';
 export * from './error-message.constants';
 export * from './swagger.constants';
 export * from './table.constants';
+export * from './labels.constants';

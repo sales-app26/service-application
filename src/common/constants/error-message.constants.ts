@@ -35,135 +35,210 @@ export const ERROR_CODE = {
 
 export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE];
 
+/*
+ * Everything below is read by field sales reps and their managers, usually as
+ * a toast. Write it the way a sales manager would say it: campaign (not
+ * project), sales manager / sales head (not moderator / super admin), team,
+ * handover, follow-up, won. No "record", "ID", "file", "row", "invalid".
+ */
+
 export const COMMON_ERROR = {
   INTERNAL: 'Something went wrong on our side. Please try again.',
-  SERVICE_BUSY: 'The service is busy. Please try again in a moment.',
-  VALIDATION_FAILED: 'Some of the submitted values are not valid.',
-  FORBIDDEN: 'You do not have access to this.',
+  SERVICE_BUSY: 'The app is busy right now. Please try again in a moment.',
+  VALIDATION_FAILED: 'Some details need a fix. Please check and try again.',
+  FORBIDDEN: 'You don’t have access to this. Ask your sales manager if you need it.',
   UNAUTHORIZED: 'Please sign in to continue.',
+  /**
+   * Kept word for word: the portal matches this exact text to refresh the
+   * sign-in quietly (portal-application/src/lib/api.ts, TOKEN_EXPIRED).
+   */
   TOKEN_EXPIRED: 'Your session has expired. Please sign in again.',
-  INVALID_UUID: 'One of the ids in the request is not valid.',
-  NOT_FOUND: 'Not found.',
+  INVALID_UUID: 'Something you picked is no longer available. Please refresh and try again.',
+  NOT_FOUND: 'We couldn’t find that.',
   INVALID_DATE_RANGE: 'The start date must be on or before the end date.',
+  TOO_LARGE: 'That’s too big to send. Try a smaller photo or sheet.',
+  RATE_LIMITED: 'Too many tries. Please wait a minute and try again.',
+  ALREADY_SAVED: 'This is already saved.',
+  MISSING_DETAILS: 'Some required details are missing.',
+  DETAILS_NOT_RIGHT: 'Some details aren’t right. Please check and try again.',
+  BUSY_SAVING: 'Someone else is saving this right now. Please try again.',
+  EMAIL_NOT_SENT: 'The email couldn’t be sent. Please try again in a minute.',
 } as const;
 
 export const AUTH_ERROR = {
   /** PRD §5.1: one message for both; it never says which was wrong. */
   INVALID_CREDENTIALS: 'Email or password is incorrect',
-  ACCOUNT_DEACTIVATED: 'Your account is deactivated. Contact your admin.',
-  ACCOUNT_NOT_SET_UP: 'This login has no account in Pronttera Sales. Contact your admin.',
-  INVALID_REFRESH_TOKEN: 'Your session has expired. Please sign in again.',
+  ACCOUNT_DEACTIVATED: 'You’re no longer on the team. Talk to your sales manager to get back in.',
+  ACCOUNT_NOT_SET_UP:
+    'This email isn’t set up in Pronttera Sales yet. Ask your sales manager to invite you.',
+  INVALID_REFRESH_TOKEN: 'Please sign in again.',
   INVALID_SET_PASSWORD_LINK: 'This link has expired or was already used. Ask for a new one.',
   CURRENT_PASSWORD_WRONG: 'The current password is incorrect.',
-  AUTH_UNAVAILABLE: 'Sign-in is temporarily unavailable. Please try again.',
+  PASSWORD_NOT_SAVED:
+    'Your password couldn’t be saved, and this link can’t be used again. Ask your sales manager for a new one.',
+  AUTH_UNAVAILABLE: 'Signing in isn’t working right now. Please try again in a minute.',
 } as const;
 
 export const USER_ERROR = {
-  NOT_FOUND: 'User not found.',
-  EMAIL_EXISTS: 'A user with this email already exists.',
+  NOT_FOUND: 'We couldn’t find this person on your team.',
+  EMAIL_EXISTS: 'Someone on the team already uses this email.',
   EMAIL_EXISTS_DEACTIVATED:
-    'This email belongs to a deactivated user. Reactivate that user instead of creating a new one.',
-  EMAIL_IN_AUTH:
-    'This email is already registered with the login system. Contact support to link it.',
-  MODERATOR_CREATES_SALES_ONLY: 'Moderators can only create sales persons.',
-  CANNOT_CREATE_SUPER_ADMIN: 'Super Admins cannot be created from the app.',
-  NOT_MANAGEABLE: 'You can only manage sales persons you created or share a project with.',
+    'This email belongs to someone who left the team. Bring them back to the team instead of adding them again.',
+  EMAIL_IN_AUTH: 'This email is already used to sign in elsewhere. Contact support to link it.',
+  MODERATOR_CREATES_SALES_ONLY: 'Sales managers can add only sales reps.',
+  CANNOT_CREATE_SUPER_ADMIN: 'A sales head can’t be added from the app.',
+  NOT_MANAGEABLE: 'You can manage only sales reps you added or who share a campaign with you.',
   ACCOUNT_OUTSIDE_SCOPE:
-    "This person also works in a project you don't manage, so only the Super Admin can do this.",
-  LAST_SUPER_ADMIN: 'You are the only active Super Admin, so this account cannot be deactivated.',
-  LAST_SUPER_ADMIN_ROLE: 'The only active Super Admin cannot change role.',
-  ALREADY_ACTIVE: 'This user is already active.',
-  ALREADY_INACTIVE: 'This user is already deactivated.',
-  SAME_ROLE: 'The user already has this role.',
-  SAME_EMAIL: 'The user already has this email.',
-  RESET_LINK_INACTIVE: 'Reactivate this person first, then make a reset link.',
+    'This person also works in a campaign you don’t manage, so only the sales head can do this.',
+  LAST_SUPER_ADMIN: 'You’re the only active sales head, so you can’t be removed from the team.',
+  LAST_SUPER_ADMIN_ROLE: 'The only active sales head can’t change role.',
+  ALREADY_ACTIVE: 'This person is already on the team.',
+  ALREADY_INACTIVE: 'This person has already left the team.',
+  SAME_ROLE: 'This person already has this role.',
+  SAME_EMAIL: 'This person already uses this email.',
+  RESET_LINK_INACTIVE: 'Bring this person back to the team first, then make a reset link.',
   DELETE_SELF: 'You can’t delete your own account.',
-  DELETE_SUPER_ADMIN: 'A Super Admin can’t be deleted. Change their role first.',
+  DELETE_SUPER_ADMIN: 'A sales head can’t be deleted. Change their role first.',
   DELETE_NEEDS_RECIPIENT: 'This person still owns leads. Choose who takes them over.',
   DELETE_RECIPIENT_INVALID:
-    'Choose an active sales person or moderator, other than the person being deleted, to take over the leads.',
-  DELETED_NAME: 'Deleted user',
+    'Choose an active sales rep or sales manager, other than the person being deleted, to take over the leads.',
+  /** Written as the name of a deleted person, so their past follow-ups still read well. */
+  DELETED_NAME: 'Former team member',
 } as const;
 
 export const PROJECT_ERROR = {
-  NOT_FOUND: 'Project not found.',
-  CLOSED: 'This project is closed.',
-  ALREADY_CLOSED: 'This project is already closed.',
-  ALREADY_ACTIVE: 'This project is already active.',
-  TYPE_LOCKED: 'The project type cannot change once the project has a lead.',
+  NOT_FOUND: 'We couldn’t find this campaign.',
+  CLOSED: 'This campaign is closed.',
+  ALREADY_CLOSED: 'This campaign is already closed.',
+  ALREADY_ACTIVE: 'This campaign is already running.',
+  TYPE_LOCKED: 'The campaign type can’t change once the campaign has a lead.',
   END_BEFORE_START: 'The end date must be on or after the start date.',
-  NAME_EXISTS_WARNING: 'Another project already has this name.',
-  IMAGE_TYPE: 'The project image must be a JPG or PNG.',
-  IMAGE_TOO_LARGE: 'The project image must be 2 MB or smaller.',
-  NO_IMAGE: 'This project has no image.',
+  NAME_EXISTS_WARNING: 'Another campaign already has this name.',
+  IMAGE_TYPE: 'The campaign picture must be a JPG or PNG photo.',
+  IMAGE_TOO_LARGE: 'The campaign picture must be 2 MB or smaller.',
+  NO_IMAGE: 'This campaign has no picture.',
 } as const;
 
 export const MEMBER_ERROR = {
-  NOT_MEMBER: 'This person is not a member of the project.',
-  ALREADY_MEMBER: 'This person is already a member of the project.',
-  USER_INACTIVE: 'A deactivated user cannot be added to a project.',
-  SUPER_ADMIN_NOT_MEMBER: 'Super Admins have access to every project and are not added as members.',
-  MODERATOR_ADDS_SALES_ONLY: 'Only the Super Admin can add moderators to a project.',
-  MODERATOR_REMOVES_SALES_ONLY: 'Only the Super Admin can remove another moderator.',
-  ALREADY_ASSIGNED: 'This project is already assigned to you.',
+  NOT_MEMBER: 'This person isn’t on this campaign’s team.',
+  ALREADY_MEMBER: 'This person is already on this campaign’s team.',
+  USER_INACTIVE: 'Someone who left the team can’t be added to a campaign.',
+  SUPER_ADMIN_NOT_MEMBER: 'The sales head sees every campaign, so isn’t added to a team.',
+  MODERATOR_ADDS_SALES_ONLY: 'Only the sales head can add sales managers to a campaign.',
+  MODERATOR_REMOVES_SALES_ONLY: 'Only the sales head can remove another sales manager.',
+  ALREADY_ASSIGNED: 'You’re already on this campaign’s team.',
   TARGET_PAIR: 'Set the target number and the period together, or clear both.',
-  TARGET_NOT_ALLOWED:
-    'You can set targets only for sales persons in your projects and for yourself.',
+  TARGET_NOT_ALLOWED: 'You can set targets only for sales reps in your campaigns and for yourself.',
+  BACKUP_NOT_ALLOWED: 'You can set backups only for sales reps in your campaigns and for yourself.',
+  BACKUP_INVALID:
+    'Choose someone active on this campaign’s team as the backup — not this person, and not the sales head.',
+} as const;
+
+export const LEAVE_ERROR = {
+  NOT_FOUND: 'We couldn’t find this leave.',
+  ONLY_SELF: 'You can add leave only for yourself.',
+  USER_INACTIVE: 'Leave can be added only for someone on the team.',
+  END_BEFORE_START: 'The last day of leave must be on or after the first.',
+  IN_PAST: 'A leave cannot end before today.',
+  TOO_LONG: `The last day of leave can be at most ${BUSINESS_RULE.LEAVE_MAX_SPAN_DAYS} days after the first.`,
+  TOO_FAR: `A leave can start at most ${BUSINESS_RULE.LEAVE_MAX_DAYS_AHEAD} days ahead.`,
+  OVERLAP: 'This person already has leave on some of these days.',
+} as const;
+
+export const COVER_ERROR = {
+  NOT_COVERING: 'You aren’t covering for this person in this campaign today.',
+} as const;
+
+export const COMMENT_ERROR = {
+  NOT_FOUND: 'We couldn’t find this note.',
+  MENTION_INVALID:
+    'You can mention only the lead’s owner, the campaign’s sales managers and the backup covering for the owner.',
+  PIN_NOT_ALLOWED: 'Only the lead’s owner or a sales manager can pin a note.',
+  FEEDBACK_ADMIN_ONLY: 'Only a sales manager of this campaign can give feedback on a follow-up.',
+  FEEDBACK_NEEDS_ENTRY: 'Choose the follow-up this feedback is about.',
+  ENTRY_NOT_ON_LEAD: 'That follow-up isn’t part of this lead’s activity.',
+  ONLY_AUTHOR_EDITS: 'Only the person who wrote this note can edit it.',
+  ONLY_AUTHOR_DELETES: 'Only the person who wrote this note, or the sales head, can delete it.',
+  NOTHING_TO_UPDATE: 'Change the text or the pin, then save.',
+  HELP_OPEN: 'There’s already an open help request on this lead.',
+  HELP_NOT_ALLOWED: 'Only the lead’s owner, or the backup covering for them, can ask for help.',
+  NOT_HELP: 'Only a help request can be marked resolved.',
+  ALREADY_RESOLVED: 'This help request is already resolved.',
+  RESOLVE_NOT_ALLOWED:
+    'Only a sales manager of this campaign or the person who asked can resolve this.',
+} as const;
+
+export const NOTIFICATION_ERROR = {
+  NOTHING_TO_MARK: 'Pick the notifications to mark as read.',
+} as const;
+
+export const TEMPLATE_ERROR = {
+  NOT_FOUND: 'We couldn’t find this ready message.',
+  NOTHING_TO_UPDATE: 'Change the name, text or order, then save.',
 } as const;
 
 export const LOCATION_ERROR = {
   LENGTH: `Location must be ${BUSINESS_RULE.LOCATION_MIN_LENGTH} to ${BUSINESS_RULE.LOCATION_MAX_LENGTH} characters.`,
 } as const;
 
+/** Adding leads from a sheet (the sheet is saved as CSV; that word appears only in how to save it). */
 export const IMPORT_ERROR = {
-  NO_FILE: 'Choose a CSV file.',
-  TOO_BIG: 'The file is too big. Split it into files of at most 1,000 leads.',
-  TOO_MANY_ROWS: 'A file can hold at most 1,000 leads. Split it and upload the parts one by one.',
-  NOT_CSV: 'The file could not be read as a CSV. Save it as CSV (comma separated) and try again.',
-  MISSING_COLUMNS: 'The first row must name the columns, including name and phone.',
-  EMPTY: 'The file has no leads in it.',
-  OWNER_NOT_MEMBER: 'Choose only active members of this project to receive the leads.',
-  ASSIGNMENTS_INVALID: 'The lead assignments could not be read. Check the file again.',
-  UNASSIGNED: 'Every lead needs a person. Assign the rest, then import.',
-  RACE: 'Some of these numbers were added by someone else a moment ago. Check the file again.',
+  NO_FILE: 'Choose the sheet with your leads.',
+  TOO_BIG: 'This sheet is too big. Split it into sheets of at most 1,000 leads.',
+  TOO_MANY_ROWS: 'A sheet can hold at most 1,000 leads. Split it and add the parts one by one.',
+  NOT_CSV:
+    'We couldn’t read this sheet. In Excel or Google Sheets, save it as “CSV (comma separated)” and try again.',
+  MISSING_COLUMNS: 'The top line of the sheet needs headings, including name and phone.',
+  EMPTY: 'This sheet has no leads in it.',
+  OWNER_NOT_MEMBER: 'Choose only people on this campaign’s team to get the leads.',
+  ASSIGNMENTS_INVALID: 'We couldn’t read who gets which lead. Check the sheet and try again.',
+  UNASSIGNED: 'Every lead needs a person. Assign the rest, then add the leads.',
+  RACE: 'Someone added some of these numbers a moment ago. Check the sheet again.',
   ROW_NAME: 'Name is missing.',
   ROW_PHONE: 'Phone must be a 10-digit Indian mobile number.',
-  ROW_NO_LOCATION: 'No location: add a location column, or a default location.',
-  ROW_NO_OWNER: 'No owner: choose who gets this lead, or add an owner_email.',
-  ROW_OWNER_UNKNOWN: 'No active member of this project has this owner_email.',
-  ROW_LONG: 'A value is too long.',
+  ROW_NO_LOCATION: 'No location: fill one in, or pick a default location.',
+  ROW_NO_OWNER: 'No owner: choose who gets this lead, or fill in owner_email.',
+  ROW_OWNER_UNKNOWN: 'No one on this campaign’s team has this owner_email.',
+  ROW_LONG: 'Some details are too long.',
+  ROW_SAME_NUMBER: (line: number): string => `Same number as line ${line} of this sheet.`,
+  ROW_ALREADY_LEAD: (owner: string): string =>
+    `Already a lead in this campaign, owned by ${owner}.`,
 } as const;
 
 export const LEAD_ERROR = {
-  NOT_FOUND: 'Lead not found.',
+  NOT_FOUND: 'We couldn’t find this lead.',
   INVALID_PHONE: 'Enter a 10-digit Indian mobile number.',
   DUPLICATE_OWN: 'You already have this lead.',
   DUPLICATE_OTHER: (owner: string): string =>
-    `This number is already a lead in this project, owned by ${owner}.`,
-  NOT_A_MEMBER: 'You are not a member of this project.',
-  ADMINS_CANNOT_ADD: 'Only members of the project can add leads.',
+    `This number is already a lead in this campaign, owned by ${owner}.`,
+  /** The same rule caught at the last moment, when the owner's name is not at hand. */
+  DUPLICATE_ANY: 'This number is already a lead in this campaign.',
+  NOT_A_MEMBER: 'You aren’t on this campaign’s team.',
+  ADMINS_CANNOT_ADD: 'Only people on this campaign’s team can add leads.',
   ONLY_OWNER_EDITS: 'Only the lead’s owner can edit it.',
-  OWNER_UNAVAILABLE: 'The lead’s owner is inactive or removed. Reassign the lead first.',
+  OWNER_UNAVAILABLE:
+    'The lead’s owner has left the team or this campaign. Assign the lead to someone first.',
 } as const;
 
 export const FOLLOW_UP_ERROR = {
-  NOT_FOUND: 'Entry not found.',
+  NOT_FOUND: 'We couldn’t find this follow-up.',
   ONLY_OWNER_LOGS: 'Only the lead’s owner can log a follow-up.',
   LEAD_TRANSFERRED: (owner: string): string => `This lead now belongs to ${owner}.`,
   NEW_NOT_ALLOWED: 'A lead cannot be set back to New.',
-  CONVERTED_LOCKED: 'Ask your moderator to change this.',
+  CONVERTED_LOCKED: 'Ask your sales manager to change this.',
   NEXT_DATE_REQUIRED: 'Choose the next follow-up date for Follow-up scheduled.',
   NEXT_DATE_PAST: 'The next follow-up date cannot be in the past.',
   NEXT_DATE_TOO_FAR: `The next follow-up date can be at most ${BUSINESS_RULE.NEXT_FOLLOW_UP_MAX_DAYS_AHEAD} days ahead.`,
-  SAME_STATUS: 'The lead already has this status.',
-  LOCKED: 'This entry is now locked.',
-  ONLY_AUTHOR_EDITS: 'Only the person who logged this entry can edit it.',
-  STATUS_CHANGE_NOTE_ONLY: 'Only the note of a status change can be edited.',
+  SAME_STATUS: 'The lead is already at this stage.',
+  LOCKED: 'This follow-up can’t be changed any more.',
+  ONLY_AUTHOR_EDITS: 'Only the person who logged this follow-up can edit it.',
+  STATUS_CHANGE_NOTE_ONLY: 'Only the note of a stage change can be edited.',
   NEXT_DATE_NOT_OWNER: 'The next follow-up date can be changed only while you own the lead.',
-  CLIENT_REQUEST_REUSED: 'This request id was already used for a different entry.',
-  NOTHING_TO_UPDATE: 'Send a note or a next follow-up date to change.',
+  CLIENT_REQUEST_REUSED:
+    'This was already saved as a different follow-up. Please refresh and try again.',
+  NOTHING_TO_UPDATE: 'Change the note or the next follow-up date, then save.',
   REASON_NOT_ALLOWED: 'A reason can be given only for Not interested or Lost.',
-  DEAL_ONLY_WHEN_CONVERTED: 'Deal value and plan can be sent only when the lead is Converted.',
+  DEAL_ONLY_WHEN_CONVERTED: 'Deal value and plan can be added only when the lead is Won.',
 } as const;
 
 export const VISIT_ERROR = {
@@ -171,35 +246,39 @@ export const VISIT_ERROR = {
   GPS_REQUIRED: 'Your location is needed to save a visit. Turn on location and try again.',
   CAPTURE_TOKEN_REQUIRED: 'Take the photo again before saving.',
   CAPTURE_EXPIRED: `The photo was taken more than ${BUSINESS_RULE.CAPTURE_WINDOW_MINUTES} minutes ago. Take it again.`,
-  CAPTURE_INVALID: 'This photo could not be verified. Take it again.',
+  CAPTURE_INVALID: 'This photo couldn’t be checked. Take it again.',
   CAPTURE_USED: 'This photo was already used for another visit. Take a new one.',
-  PHOTO_INVALID: 'The photo could not be read. Take it again.',
+  PHOTO_INVALID: 'The photo couldn’t be read. Take it again.',
   PHOTO_TOO_LARGE: 'The photo is too large. Take it again.',
-  STORAGE_UNAVAILABLE: 'The photo could not be saved. Please retry.',
-  STORAGE_NOT_CONFIGURED: 'Photo storage is not configured on the server.',
-  NO_PHOTO: 'This entry has no photo.',
+  STORAGE_UNAVAILABLE: 'The photo couldn’t be saved. Please try again.',
+  STORAGE_NOT_CONFIGURED: 'Photos can’t be saved right now. Please contact support.',
+  NO_PHOTO: 'This follow-up has no photo.',
 } as const;
 
 export const TRANSFER_ERROR = {
-  NOT_FOUND: 'Transfer not found.',
-  PENDING_EXISTS: 'A transfer is already waiting for approval.',
-  ONLY_OWNER_REQUESTS: 'Only the lead’s owner can request a transfer.',
-  RECIPIENT_INVALID: 'Choose an active member of this project other than the current owner.',
+  NOT_FOUND: 'We couldn’t find this handover.',
+  PENDING_EXISTS: 'A handover is already waiting for approval.',
+  ONLY_OWNER_REQUESTS: 'Only the lead’s owner can ask for a handover.',
+  RECIPIENT_INVALID: 'Choose someone active on this campaign’s team, other than the current owner.',
   ALREADY_DECIDED: (name: string): string => `Already decided by ${name}.`,
-  SELF_DECISION: 'You cannot decide a transfer you requested or would receive.',
-  SELF_REASSIGN: 'You cannot reassign a lead to or from yourself. Ask another admin.',
-  OWNER_CHANGED: 'The lead’s owner changed after this request was made.',
-  LEADS_NOT_IN_PROJECT: 'Some leads were not found in this project.',
+  /** Who decided, when their name is not at hand. */
+  ANOTHER_MANAGER: 'another manager',
+  SELF_DECISION: 'You can’t approve or reject a handover you asked for or would receive.',
+  SELF_REASSIGN: 'You can’t assign a lead to or from yourself. Ask another manager.',
+  OWNER_CHANGED: 'The lead’s owner changed after this handover was asked for.',
+  LEADS_NOT_IN_PROJECT: 'Some of these leads aren’t in this campaign.',
 } as const;
 
 export const REPORT_ERROR = {
-  EXPORT_RANGE_TOO_LONG: `An export can cover at most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days.`,
+  EXPORT_RANGE_TOO_LONG: `A report can cover at most ${BUSINESS_RULE.EXPORT_MAX_DAYS} days.`,
   EXPORT_TOO_MANY_ROWS:
-    'An export can hold at most 20,000 rows. Choose fewer days, one project or one person.',
-  DASHBOARD_RANGE_TOO_LONG: `The dashboard can cover at most ${BUSINESS_RULE.DASHBOARD_MAX_DAYS} days.`,
+    'This report is too big (over 20,000 lines). Choose fewer days, one campaign or one person.',
+  DASHBOARD_RANGE_TOO_LONG: `The sales overview can cover at most ${BUSINESS_RULE.DASHBOARD_MAX_DAYS} days.`,
+  SUMMARY_RANGE_TOO_LONG: `A summary can cover at most ${BUSINESS_RULE.SUMMARY_MAX_DAYS} days.`,
   DATE_REQUIRED: 'Choose a start and end date.',
 } as const;
 
+/** Release notes are written by the sales head, who works with .md files here. */
 export const VERSION_ERROR = {
   NOT_FOUND: 'That version no longer exists.',
   EXISTS: (version: string) => `Version ${version} already exists.`,

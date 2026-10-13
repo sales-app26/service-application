@@ -77,6 +77,29 @@ export const BUSINESS_RULE = {
   /** Needs attention: a transfer waiting longer than this. */
   ATTENTION_STALE_TRANSFER_HOURS: 24,
   ATTENTION_LIST_LIMIT: 20,
+  /**
+   * Needs attention: an open help request starts at this severity — above any
+   * other kind until that is several times past its threshold — and climbs by
+   * one for every day it waits.
+   */
+  ATTENTION_HELP_BASE_SEVERITY: 10,
+  /** One leave covers at most this many days after its first (`user_leaves_span_max`). */
+  LEAVE_MAX_SPAN_DAYS: 60,
+  /** A leave can be booked at most this far ahead. */
+  LEAVE_MAX_DAYS_AHEAD: 365,
+  LEAVE_NOTE_MAX_LENGTH: 200,
+  COMMENT_MAX_LENGTH: 2000,
+  /** People one comment may mention. */
+  COMMENT_MAX_MENTIONS: 20,
+  /** A notification quotes this much of the comment that caused it. */
+  NOTIFICATION_PREVIEW_LENGTH: 140,
+  /** The note written with a transfer or reassignment, pinned for the next owner. */
+  HANDOVER_NOTE_MAX_LENGTH: 500,
+  TEMPLATE_LABEL_MAX_LENGTH: 40,
+  TEMPLATE_BODY_MAX_LENGTH: 1000,
+  TEMPLATE_SORT_MAX: 10_000,
+  /** Ids one "mark as read" may name; `all` covers the rest. */
+  NOTIFICATIONS_READ_MAX_IDS: 100,
 } as const;
 
 /** Statuses after which no next follow-up date is asked, and any is cleared (PRD §4). */
@@ -111,12 +134,15 @@ export const STORAGE_FOLDER = {
   PROJECTS: 'projects',
 } as const;
 
-/** Reasons written on transfers the system rejects on someone's behalf. */
+/**
+ * Reasons written on handovers the system rejects (or, for a deleted person,
+ * makes) on someone's behalf. People read them on the handover card.
+ */
 export const AUTO_REJECT_REASON = {
-  USER_DEACTIVATED: 'User deactivated',
-  USER_DELETED: 'User deleted',
-  MEMBER_REMOVED: 'Member removed from the project',
-  PROJECT_CLOSED: 'Project closed',
-  LEAD_DELETED: 'Lead deleted',
-  SUPERSEDED: 'Superseded by a direct reassignment',
+  USER_DEACTIVATED: 'Person left the team',
+  USER_DELETED: 'Person removed from the app',
+  MEMBER_REMOVED: 'Person removed from the campaign team',
+  PROJECT_CLOSED: 'Campaign closed',
+  LEAD_DELETED: 'Lead removed',
+  SUPERSEDED: 'A manager assigned the lead directly',
 } as const;

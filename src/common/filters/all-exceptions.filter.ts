@@ -45,7 +45,7 @@ const UNIQUE_CONSTRAINT_MESSAGE: Record<string, { code: ErrorCode; message: stri
   [DB_CONSTRAINT.USERS_EMAIL]: { code: ERROR_CODE.CONFLICT, message: USER_ERROR.EMAIL_EXISTS },
   [DB_CONSTRAINT.LEADS_PROJECT_PHONE]: {
     code: ERROR_CODE.DUPLICATE_LEAD_OTHER,
-    message: 'This number is already a lead in this project.',
+    message: LEAD_ERROR.DUPLICATE_ANY,
   },
   [DB_CONSTRAINT.LEAD_TRANSFERS_ONE_PENDING]: {
     code: ERROR_CODE.TRANSFER_PENDING,
@@ -165,6 +165,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    const errorCode = typeof payload === 'object' ? payload.errorCode : undefined;
     const message =
       typeof payload === 'string'
         ? payload
@@ -172,10 +173,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     return {
       status,
-      errorCode:
-        (typeof payload === 'object' ? payload.errorCode : undefined) ??
-        this.errorCodeForStatus(status),
-      message,
+      errorCode: errorCode ?? this.errorCodeForStatus(status),
+      // Framework errors ("ThrottlerException: Too Many Requests", "File too large",
+      // "Cannot GET /x") are worded for developers; a person sees a plain sentence.
+      message: errorCode ? message : (this.plainMessageForStatus(status) ?? message),
     };
   }
 
@@ -186,7 +187,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return {
           status: HttpStatus.CONFLICT,
           errorCode: known?.code ?? ERROR_CODE.CONFLICT,
-          message: known?.message ?? 'A record with these details already exists.',
+          message: known?.message ?? COMMON_ERROR.ALREADY_SAVED,
         };
       }
 
@@ -194,7 +195,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return {
           status: HttpStatus.UNPROCESSABLE_ENTITY,
           errorCode: ERROR_CODE.UNPROCESSABLE,
-          message: 'A referenced record does not exist or belongs to another project.',
+          message: COMMON_ERROR.INVALID_UUID,
         };
 
       case PG_ERROR_CODE.CHECK_VIOLATION:
@@ -204,14 +205,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
           message:
             error.constraint === 'leads_phone_format'
               ? LEAD_ERROR.INVALID_PHONE
-              : 'The submitted values violate a data integrity rule.',
+              : COMMON_ERROR.DETAILS_NOT_RIGHT,
         };
 
       case PG_ERROR_CODE.NOT_NULL_VIOLATION:
         return {
           status: HttpStatus.BAD_REQUEST,
           errorCode: ERROR_CODE.VALIDATION_FAILED,
-          message: 'A required field was missing.',
+          message: COMMON_ERROR.MISSING_DETAILS,
         };
 
       case PG_ERROR_CODE.INVALID_TEXT_REPRESENTATION:
@@ -227,7 +228,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return {
           status: HttpStatus.CONFLICT,
           errorCode: ERROR_CODE.CONFLICT,
-          message: 'This record is being updated by another request. Please try again.',
+          message: COMMON_ERROR.BUSY_SAVING,
         };
 
       default:
@@ -260,6 +261,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
       field,
       messages: fieldMessages,
     }));
+  }
+
+  private plainMessageForStatus(status: number): string | undefined {
+    switch (status) {
+      case HttpStatus.BAD_REQUEST:
+        return COMMON_ERROR.VALIDATION_FAILED;
+      case HttpStatus.UNAUTHORIZED:
+        return COMMON_ERROR.UNAUTHORIZED;
+      case HttpStatus.FORBIDDEN:
+        return COMMON_ERROR.FORBIDDEN;
+      case HttpStatus.NOT_FOUND:
+        return COMMON_ERROR.NOT_FOUND;
+      case HttpStatus.PAYLOAD_TOO_LARGE:
+        return COMMON_ERROR.TOO_LARGE;
+      case HttpStatus.TOO_MANY_REQUESTS:
+        return COMMON_ERROR.RATE_LIMITED;
+      case HttpStatus.SERVICE_UNAVAILABLE:
+        return COMMON_ERROR.SERVICE_BUSY;
+      default:
+        return status >= HttpStatus.INTERNAL_SERVER_ERROR ? COMMON_ERROR.INTERNAL : undefined;
+    }
   }
 
   private errorCodeForStatus(status: number): ErrorCode {

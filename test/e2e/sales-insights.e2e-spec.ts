@@ -188,9 +188,7 @@ describe('Sales insights (e2e)', () => {
 
       const deal = await followUp(ravi, leadId, { status: 'interested', dealValue: 999 });
       expect(deal.status).toBe(400);
-      expect(deal.body.message).toBe(
-        'Deal value and plan can be sent only when the lead is Converted.',
-      );
+      expect(deal.body.message).toBe('Deal value and plan can be added only when the lead is Won.');
 
       const manual = await changeStatus(ravi, leadId, { status: 'interested', reason: 'no_need' });
       expect(manual.status).toBe(400);
@@ -445,7 +443,7 @@ describe('Sales insights (e2e)', () => {
     it('covers at most 366 days', async () => {
       const res = await admin.get(`/dashboard?from=${plusDays(today, -366)}&to=${today}`);
       expect(res.status).toBe(400);
-      expect(res.body.message).toBe('The dashboard can cover at most 366 days.');
+      expect(res.body.message).toBe('The sales overview can cover at most 366 days.');
       expect((await admin.get(`/dashboard?from=${plusDays(today, -365)}&to=${today}`)).status).toBe(
         200,
       );
@@ -481,7 +479,7 @@ describe('Sales insights (e2e)', () => {
       );
 
       // Ravi asked to hand a lead to Priya 30 hours ago; nobody has decided.
-      const lead = (await addLead(ravi, { name: 'Handover' }, pid)).body.data;
+      const lead = (await addLead(ravi, { name: 'Shah Stores' }, pid)).body.data;
       const transfer = await ravi.post(`/leads/${lead.id}/transfers`, {
         toUserId: ids.priya,
         reason: 'She covers this area.',
@@ -509,7 +507,7 @@ describe('Sales insights (e2e)', () => {
           kind: 'idle',
           user: { id: ids.priya, name: 'Priya Desai' },
           projectName: 'Attention Drive',
-          detail: 'No entry for 3 days.',
+          detail: 'No activity for 3 days.',
           leadCount: 6,
         },
       ]);
@@ -518,7 +516,7 @@ describe('Sales insights (e2e)', () => {
           kind: 'stale_transfer',
           user: { id: ids.ravi, name: 'Ravi Kumar' },
           projectName: 'Attention Drive',
-          detail: 'Transfer of Handover to Priya Desai waiting 30 hours.',
+          detail: 'Handover of Shah Stores to Priya Desai waiting 30 hours.',
         },
       ]);
       // Ravi logged today and the moderator owns no leads: neither is idle.
@@ -552,9 +550,9 @@ describe('Sales insights (e2e)', () => {
       expect(res.status).toBe(200);
       const [header, ...rows] = lines(res.text);
       expect(header).toBe(
-        'Lead ID,Project,Name,Business name,Phone,Location,Status,Next follow-up,Owner,Owner active,Converted at (IST),Converted by,Deal value (₹/month),Plan,Source,Added at (IST),Updated at (IST),Last activity (IST),Notes',
+        'Lead reference,Campaign,Contact person,Business name,Phone,Location,Stage,Next follow-up,Lead owner,Owner still on team,Won on (IST),Won by,Deal value (₹/month),Plan,Lead source,Added on (IST),Last changed (IST),Last activity (IST),Notes',
       );
-      expect(rows.some((row) => row.includes(',2999,Pro,whatsapp,'))).toBe(true);
+      expect(rows.some((row) => row.includes(',2999,Pro,WhatsApp,'))).toBe(true);
     });
 
     it('adds the reason to the follow-ups file', async () => {
@@ -562,8 +560,8 @@ describe('Sales insights (e2e)', () => {
         `/exports/follow-ups?from=${today}&to=${today}&projectId=${projectId}`,
       );
       const [header, ...rows] = lines(res.text);
-      expect(header.split(',').slice(7, 11)).toEqual(['Type', 'Status', 'Reason', 'Note']);
-      expect(rows.some((row) => row.includes(',status_change,lost,competitor,'))).toBe(true);
+      expect(header.split(',').slice(7, 11)).toEqual(['Activity', 'Stage', 'Reason', 'Note']);
+      expect(rows.some((row) => row.includes(',Stage change,Lost,Chose a competitor,'))).toBe(true);
     });
 
     it('refuses a file of more than 20,000 rows', async () => {
@@ -588,7 +586,7 @@ describe('Sales insights (e2e)', () => {
       expect(res.status).toBe(400);
       expect(res.body.errorCode).toBe('VALIDATION_FAILED');
       expect(res.body.message).toBe(
-        'An export can hold at most 20,000 rows. Choose fewer days, one project or one person.',
+        'This report is too big (over 20,000 lines). Choose fewer days, one campaign or one person.',
       );
 
       await sql(`DELETE FROM sales.leads WHERE project_id = $1 AND name = 'Bulk 20001'`, [pid]);

@@ -92,7 +92,7 @@ describe('Bulk import and person summary (e2e)', () => {
         ownerIds: ids.ravi,
       });
       expect(none.status).toBe(400);
-      expect(none.body.message).toBe('Choose a CSV file.');
+      expect(none.body.message).toBe('Choose the sheet with your leads.');
 
       const noColumns = await upload(moderator, projectId, 'client,town\nA,Pune\n', {
         ownerIds: ids.ravi,
@@ -102,12 +102,12 @@ describe('Bulk import and person summary (e2e)', () => {
 
       const empty = await upload(moderator, projectId, header, { ownerIds: ids.ravi });
       expect(empty.status).toBe(400);
-      expect(empty.body.message).toBe('The file has no leads in it.');
+      expect(empty.body.message).toBe('This sheet has no leads in it.');
 
       const xlsx = await upload(moderator, projectId, Buffer.from([0x50, 0x4b, 3, 4, 0]), {
         ownerIds: ids.ravi,
       });
-      expect(xlsx.body.message).toMatch(/could not be read as a CSV/);
+      expect(xlsx.body.message).toMatch(/couldn’t read this sheet/);
     });
 
     it('refuses owners who are not active members', async () => {
@@ -115,7 +115,7 @@ describe('Bulk import and person summary (e2e)', () => {
         ownerIds: requestId(),
       });
       expect(res.status).toBe(422);
-      expect(res.body.message).toMatch(/active members/);
+      expect(res.body.message).toMatch(/people on this campaign’s team/);
     });
 
     it('a dry run reports exactly what would happen and changes nothing', async () => {
@@ -159,7 +159,7 @@ describe('Bulk import and person summary (e2e)', () => {
         [7, 'duplicate'],
       ]);
       expect(res.body.data.problems[0].reason).toMatch(/10-digit/);
-      expect(res.body.data.problems[2].reason).toBe('Same number as row 2 in this file.');
+      expect(res.body.data.problems[2].reason).toBe('Same number as line 2 of this sheet.');
       expect(await leadsOf(admin)).toHaveLength(0);
     });
 
@@ -172,7 +172,7 @@ describe('Bulk import and person summary (e2e)', () => {
         'Suresh Rao,9876543214,,Wanowrie,,\n';
       const res = await upload(moderator, projectId, csv, { ownerIds: `${ids.ravi},${ids.priya}` });
       expect(res.status).toBe(200);
-      expect(res.body.message).toBe('Leads imported.');
+      expect(res.body.message).toBe('Leads added.');
       expect(res.body.data).toMatchObject({
         dryRun: false,
         importable: 4,
@@ -212,7 +212,7 @@ describe('Bulk import and person summary (e2e)', () => {
       const res = await upload(moderator, projectId, csv, { ownerIds: ids.ravi });
       expect(res.body.data).toMatchObject({ total: 2, imported: 1, duplicates: 1, invalid: 0 });
       expect(res.body.data.problems[0].reason).toBe(
-        'Already a lead in this project, owned by Ravi Kumar.',
+        'Already a lead in this campaign, owned by Ravi Kumar.',
       );
       expect(await leadsOf(admin)).toHaveLength(5);
     });
@@ -227,8 +227,8 @@ describe('Bulk import and person summary (e2e)', () => {
       const res = await upload(moderator, projectId, csv);
       expect(res.body.data).toMatchObject({ imported: 1, invalid: 2 });
       expect(res.body.data.problems.map((p: any) => p.reason)).toEqual([
-        'No active member of this project has this owner_email.',
-        'No location: add a location column, or a default location.',
+        'No one on this campaign’s team has this owner_email.',
+        'No location: fill one in, or pick a default location.',
       ]);
     });
 

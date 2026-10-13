@@ -9,6 +9,7 @@ import {
   DB_CONSTRAINT,
   ERROR_CODE,
   IMPORT_ERROR,
+  LOCATION_ERROR,
   SQL_TABLE,
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
@@ -173,7 +174,7 @@ export class LeadsImportService {
           row,
           name,
           phone,
-          typed ? 'Location must be 2 to 100 characters.' : IMPORT_ERROR.ROW_NO_LOCATION,
+          typed ? LOCATION_ERROR.LENGTH : IMPORT_ERROR.ROW_NO_LOCATION,
         );
       }
 
@@ -188,7 +189,7 @@ export class LeadsImportService {
 
       const earlier = phonesInFile.get(phone);
       if (earlier !== undefined) {
-        return fail('duplicate', row, name, phone, `Same number as row ${earlier} in this file.`);
+        return fail('duplicate', row, name, phone, IMPORT_ERROR.ROW_SAME_NUMBER(earlier));
       }
       phonesInFile.set(phone, row);
       checked.push({ row, name, phone, businessName, notes, location, owner: null, ownerEmail });
@@ -207,7 +208,7 @@ export class LeadsImportService {
           candidate.row,
           candidate.name,
           candidate.phone,
-          `Already a lead in this project, owned by ${owner}.`,
+          IMPORT_ERROR.ROW_ALREADY_LEAD(owner),
         );
         continue;
       }

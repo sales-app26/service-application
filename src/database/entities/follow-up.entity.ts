@@ -44,6 +44,13 @@ export class FollowUp {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
+  /**
+   * Set when a backup logged this for the lead's owner, who was on leave. The
+   * entry is still theirs (`user_id`); the lead and its credit stay the owner's.
+   */
+  @Column({ name: 'covering_for_id', type: PG_TYPE.UUID, nullable: true })
+  coveringForId: string | null;
+
   @Column({ name: 'entry_type', type: PG_TYPE.TEXT })
   entryType: EntryType;
 

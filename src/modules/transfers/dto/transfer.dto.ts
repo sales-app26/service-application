@@ -11,6 +11,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
@@ -83,6 +84,39 @@ export class RequestTransferDto {
   toUserId: string;
 
   @ApiProperty({ example: 'Client lives in Ravi’s area now.' })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(BUSINESS_RULE.REASON_MAX_LENGTH)
+  reason: string;
+
+  @ApiPropertyOptional({
+    maxLength: BUSINESS_RULE.HANDOVER_NOTE_MAX_LENGTH,
+    nullable: true,
+    example: 'Prefers calls after 6 pm. Quoted ₹1,499 for the annual plan.',
+    description:
+      'What the next owner should know. Saved as a pinned `handover` comment on the lead.',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(BUSINESS_RULE.HANDOVER_NOTE_MAX_LENGTH)
+  handoverNote?: string | null;
+}
+
+/** Ask for a lead someone else owns, found by its phone number. */
+export class RequestByPhoneDto {
+  @ApiProperty({
+    example: '+91 98765-43210',
+    description: 'Normalised like a lead’s phone.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  phone: string;
+
+  @ApiProperty({ example: 'The owner’s brother is my client already.' })
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()

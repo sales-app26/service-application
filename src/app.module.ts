@@ -8,19 +8,27 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { RolesGuard } from './common/guards/roles.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { plainValidationException } from './common/validators/validation-messages';
 import { AppConfig, configurations } from './config/configuration';
 import { envValidationOptions, envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { AccessModule } from './modules/access/access.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthGuard } from './modules/auth/guards/auth.guard';
+import { CommentsModule } from './modules/comments/comments.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { LeaveLookupModule } from './modules/leaves/leave-lookup.module';
+import { LeavesModule } from './modules/leaves/leaves.module';
 import { MediaModule } from './modules/media/media.module';
+import { NotificationSenderModule } from './modules/notifications/notification-sender.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SupabaseModule } from './modules/supabase/supabase.module';
+import { TeamModule } from './modules/team/team.module';
+import { TemplatesModule } from './modules/templates/templates.module';
 import { TransferRejectionsModule } from './modules/transfers/transfer-rejections.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
 import { UsersModule } from './modules/users/users.module';
@@ -63,12 +71,15 @@ const MILLISECONDS_PER_SECOND = 1_000;
 
     HealthModule,
 
-    // Cross-cutting, @Global: Supabase Auth/Storage, project scope, and the
-    // transfer auto-reject that users, projects and leads all trigger.
+    // Cross-cutting, @Global: Supabase Auth/Storage, project scope and leave
+    // cover, the transfer auto-reject that users, projects and leads all
+    // trigger, "on leave today", and writing notifications.
     MailModule,
     SupabaseModule,
     AccessModule,
     TransferRejectionsModule,
+    LeaveLookupModule,
+    NotificationSenderModule,
     MediaModule,
 
     AuthModule,
@@ -78,6 +89,11 @@ const MILLISECONDS_PER_SECOND = 1_000;
     TransfersModule,
     ReportsModule,
     VersionsModule,
+    LeavesModule,
+    CommentsModule,
+    NotificationsModule,
+    TeamModule,
+    TemplatesModule,
   ],
   providers: [
     {
@@ -90,6 +106,8 @@ const MILLISECONDS_PER_SECOND = 1_000;
           transform: true,
           transformOptions: { enableImplicitConversion: false },
           stopAtFirstError: false,
+          // Field messages in plain words ("must be a date", not "must be a valid ISO 8601 date string").
+          exceptionFactory: plainValidationException,
         }),
     },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

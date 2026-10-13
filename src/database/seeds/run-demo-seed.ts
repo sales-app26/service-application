@@ -432,6 +432,34 @@ async function reset(): Promise<void> {
 
   await dataSource.transaction(async (manager) => {
     const inDemo = 'project_id = ANY($1::uuid[])';
+    // Collaboration rows (06_team_collaboration.sql) in demo projects or by demo people.
+    await manager.query(
+      `DELETE FROM ${SQL_TABLE.NOTIFICATIONS}
+        WHERE user_id = ANY($2::uuid[]) OR actor_id = ANY($2::uuid[])
+           OR lead_id IN (SELECT id FROM ${SQL_TABLE.LEADS} WHERE ${inDemo})`,
+      [projectIds, userIds],
+    );
+    await manager.query(
+      `DELETE FROM ${SQL_TABLE.LEAD_COMMENTS}
+        WHERE ${inDemo} OR user_id = ANY($2::uuid[]) OR resolved_by = ANY($2::uuid[])`,
+      [projectIds, userIds],
+    );
+    await manager.query(
+      `DELETE FROM ${SQL_TABLE.MESSAGE_TEMPLATES} WHERE ${inDemo} OR created_by = ANY($2::uuid[])`,
+      [projectIds, userIds],
+    );
+    await manager.query(
+      `DELETE FROM ${SQL_TABLE.USER_LEAVES} WHERE user_id = ANY($1::uuid[]) OR created_by = ANY($1::uuid[])`,
+      [userIds],
+    );
+    await manager.query(
+      `UPDATE ${SQL_TABLE.PROJECT_MEMBERS} SET backup_user_id = NULL WHERE backup_user_id = ANY($1::uuid[])`,
+      [userIds],
+    );
+    await manager.query(
+      `UPDATE ${SQL_TABLE.FOLLOW_UPS} SET covering_for_id = NULL WHERE covering_for_id = ANY($1::uuid[])`,
+      [userIds],
+    );
     await manager.query(
       `DELETE FROM ${SQL_TABLE.LEAD_TRANSFERS} WHERE lead_id IN (SELECT id FROM ${SQL_TABLE.LEADS} WHERE ${inDemo})`,
       [projectIds],

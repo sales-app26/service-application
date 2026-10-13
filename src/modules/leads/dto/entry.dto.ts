@@ -30,6 +30,21 @@ export class PersonRefDto {
   name: string;
 }
 
+/** An admin's feedback on one entry (`lead_comments` of kind `feedback`). */
+export class EntryFeedbackDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ example: 'Good visit — ask for the shop photo next time.' })
+  body: string;
+
+  @ApiProperty({ type: PersonRefDto })
+  user: PersonRefDto;
+
+  @ApiProperty()
+  createdAt: Date;
+}
+
 /** One row of a lead's history: a follow-up or a manual status change. */
 export class EntryDto {
   @ApiProperty({ format: 'uuid', example: SWAGGER_EXAMPLE.UUID })
@@ -85,6 +100,19 @@ export class EntryDto {
 
   @ApiProperty({ type: PersonRefDto, description: 'Who logged it. Kept after a transfer.' })
   user: PersonRefDto;
+
+  @ApiPropertyOptional({
+    type: PersonRefDto,
+    nullable: true,
+    description: 'The owner a backup logged this for while they were on leave.',
+  })
+  coveringFor: PersonRefDto | null;
+
+  @ApiProperty({
+    type: [EntryFeedbackDto],
+    description: 'Admins’ feedback on this entry, oldest first.',
+  })
+  feedback: EntryFeedbackDto[];
 
   @ApiProperty({ description: 'Server time — the official visit time.' })
   createdAt: Date;

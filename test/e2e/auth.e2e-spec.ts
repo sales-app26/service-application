@@ -133,6 +133,8 @@ describe('Auth (e2e)', () => {
       password: 'long-enough-1',
     });
     expect(login.status).toBe(200);
-    expect(login.body.data.user.notice).toBe('You are not assigned to any project yet.');
+    expect(login.body.data.user.notice).toBe(
+      'You’re not on any campaign yet. Your sales manager will add you.',
+    );
   });
 });

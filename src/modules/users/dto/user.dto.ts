@@ -17,6 +17,7 @@ import { PaginationQueryDto } from '../../../common/dto';
 import { UserRole } from '../../../common/enums';
 import { lowerTrimString, toBoolean, trimString } from '../../../common/utils';
 import { User } from '../../../database/entities';
+import { LeaveSpanDto } from '../../leaves/dto/leave.dto';
 
 /** Roles the app can create. Super Admins come from the seed or a role change. */
 export const CREATABLE_ROLES = [UserRole.MODERATOR, UserRole.SALES_PERSON] as const;
@@ -61,7 +62,20 @@ export class UserDto {
   @ApiProperty()
   canManageAccount: boolean;
 
-  static from(user: User, canManage: boolean, canManageAccount = canManage): UserDto {
+  @ApiPropertyOptional({
+    type: LeaveSpanDto,
+    nullable: true,
+    description:
+      'The leave the person is on today (IST), if any. Null for people the caller cannot manage.',
+  })
+  onLeave: LeaveSpanDto | null;
+
+  static from(
+    user: User,
+    canManage: boolean,
+    canManageAccount = canManage,
+    onLeave: LeaveSpanDto | null = null,
+  ): UserDto {
     return {
       id: user.id,
       name: user.name,
@@ -73,6 +87,7 @@ export class UserDto {
       createdAt: user.createdAt,
       canManage,
       canManageAccount: canManage && canManageAccount,
+      onLeave,
     };
   }
 }

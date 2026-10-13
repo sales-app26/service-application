@@ -90,6 +90,12 @@ export const istMonthRange = (at: Date = new Date()): InstantRange => {
 export const targetPeriodRange = (period: TargetPeriod, at: Date = new Date()): InstantRange =>
   period === TargetPeriod.WEEKLY ? istWeekRange(at) : istMonthRange(at);
 
+/** The inclusive India dates of a `[start, end)` window of instants. */
+export const istRangeDates = (range: InstantRange): { from: string; to: string } => ({
+  from: istDateOf(range.start),
+  to: istDateOf(new Date(range.end.getTime() - 1)),
+});
+
 /** TRUE when two instants fall on the same IST calendar day. */
 export const isSameIstDay = (a: Date, b: Date): boolean => istDateOf(a) === istDateOf(b);
 
@@ -105,6 +111,20 @@ const IST_STAMP_FORMAT = new Intl.DateTimeFormat('en-IN', {
 
 /** `08 Oct 2026, 03:42 pm` — the date and time burnt onto a visit photo. */
 export const formatIstStamp = (at: Date): string => IST_STAMP_FORMAT.format(at);
+
+const DAY_LABEL_FORMAT = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'UTC',
+  day: 'numeric',
+  month: 'short',
+});
+
+/** `14 Oct` for the calendar date `2026-10-14` — a date, so no time zone moves it. */
+export const formatDayLabel = (date: string): string =>
+  DAY_LABEL_FORMAT.format(new Date(`${date}T00:00:00Z`));
+
+/** `14 Oct–16 Oct`, or `14 Oct` for a single day. */
+export const formatDaySpan = (from: string, to: string): string =>
+  from === to ? formatDayLabel(from) : `${formatDayLabel(from)}–${formatDayLabel(to)}`;
 
 /** `2026-10-08 15:42` in IST — sortable, for CSV exports. */
 export const formatIstDateTime = (at: Date | null): string => {

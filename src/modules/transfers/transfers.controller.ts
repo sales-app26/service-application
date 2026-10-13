@@ -20,6 +20,7 @@ import {
   ListTransfersQueryDto,
   PendingCountDto,
   ReassignResultDto,
+  RequestByPhoneDto,
   RequestTransferDto,
   TransferDto,
 } from './dto/transfer.dto';
@@ -38,7 +39,7 @@ export class TransfersController {
   @ApiOperation({
     summary: 'Request a transfer (owner)',
     description:
-      'To another active member of the same project, with a reason. One pending request per lead (`409 TRANSFER_PENDING`: "A transfer is already waiting for approval."). The owner keeps working the lead while it waits.',
+      'To another active member of the same project, with a reason. One pending request per lead (`409 TRANSFER_PENDING`: "A transfer is already waiting for approval."). The owner keeps working the lead while it waits. An optional `handoverNote` is pinned on the lead as a `handover` comment. The project’s admins are notified (`transfer_requested`).',
   })
   @ApiCreatedEnvelope(TransferDto)
   request(
@@ -49,6 +50,23 @@ export class TransfersController {
     return this.transfersService.request(actor, params.id, dto);
   }
 
+  @Post(`${ROUTE.PROJECTS}/${ROUTE.ID_PARAM}/${ROUTE.LEADS}/request-by-phone`)
+  @Roles(UserRole.SALES_PERSON, UserRole.MODERATOR)
+  @ResponseMessage(SUCCESS_MESSAGE.LEAD_REQUESTED)
+  @ApiOperation({
+    summary: 'Ask for a lead someone else owns, by its phone',
+    description:
+      'For a member of the project (the next step after `409 DUPLICATE_LEAD_OTHER` with `details.canRequest`). Creates a pending transfer from the owner to the caller, decided by an admin like any other; the project’s admins are notified. No live lead with that number here: `404`. The caller’s own lead: `409 DUPLICATE_LEAD_OWN` with `details.leadId`. Already a pending transfer on it: `409 TRANSFER_PENDING`.',
+  })
+  @ApiCreatedEnvelope(TransferDto)
+  requestByPhone(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+    @Body() dto: RequestByPhoneDto,
+  ): Promise<TransferDto> {
+    return this.transfersService.requestByPhone(actor, params.id, dto);
+  }
+
   @Post(`${ROUTE.LEADS}/${ROUTE.ID_PARAM}/reassign`)
   @Roles(UserRole.SUPER_ADMIN, UserRole.MODERATOR)
   @HttpCode(HttpStatus.OK)
@@ -56,7 +74,7 @@ export class TransfersController {
   @ApiOperation({
     summary: 'Reassign a lead directly (admin)',
     description:
-      'Recorded as a transfer approved by the admin. The only way to move a lead whose owner is deactivated or removed. A pending request on it is rejected as superseded. A moderator cannot reassign to or from himself.',
+      'Recorded as a transfer approved by the admin. The only way to move a lead whose owner is deactivated or removed. A pending request on it is rejected as superseded. A moderator cannot reassign to or from himself. An optional `handoverNote` is pinned on the lead; the new owner is notified (`lead_assigned`).',
   })
   @ApiOkEnvelope(ReassignResultDto)
   reassign(
@@ -74,7 +92,7 @@ export class TransfersController {
   @ApiOperation({
     summary: 'Reassign several leads to one member (admin)',
     description:
-      'For a departed person’s leads. All or nothing; leads the recipient already owns are skipped and counted.',
+      'For a departed person’s leads. All or nothing; leads the recipient already owns are skipped and counted. An optional `handoverNote` is pinned on each lead that moves; the new owner gets one `lead_assigned` notification for the lot.',
   })
   @ApiOkEnvelope(ReassignResultDto)
   bulkReassign(
@@ -89,7 +107,7 @@ export class TransfersController {
   @ApiOperation({
     summary: 'List transfers',
     description:
-      'Admins: transfers in their projects, pending and decided. Sales persons: their own requests, with each decision and who made it.',
+      'Admins: transfers in their projects, pending and decided. Sales persons: transfers they requested, of their leads, or to them — with each decision and who made it.',
   })
   @ApiPaginatedEnvelope(TransferDto)
   list(
@@ -123,7 +141,7 @@ export class TransfersController {
   @ApiOperation({
     summary: 'Approve a transfer',
     description:
-      'The lead moves to the new owner; earlier entries keep their authors and the conversion credit stays put. A moderator cannot decide a request he made or would receive. If another admin decided first: `409 TRANSFER_ALREADY_DECIDED` ("Already decided by …").',
+      'The lead moves to the new owner; earlier entries keep their authors and the conversion credit stays put. A moderator cannot decide a request he made or would receive. If another admin decided first: `409 TRANSFER_ALREADY_DECIDED` ("Already decided by …"). The new owner is notified (`lead_assigned`), the requester and previous owner too (`transfer_decided`).',
   })
   @ApiOkEnvelope(TransferDto)
   approve(
@@ -140,7 +158,8 @@ export class TransfersController {
   @ResponseMessage(SUCCESS_MESSAGE.TRANSFER_REJECTED)
   @ApiOperation({
     summary: 'Reject a transfer',
-    description: 'The owner sees the decision and who made it, and can request again.',
+    description:
+      'The owner sees the decision and who made it, and can request again. The requester and owner are notified (`transfer_decided`).',
   })
   @ApiOkEnvelope(TransferDto)
   reject(

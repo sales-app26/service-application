@@ -14,6 +14,8 @@ import {
 import { SWAGGER_EXAMPLE } from '../../../common/constants';
 import { TargetPeriod, UserRole } from '../../../common/enums';
 import { toBoolean } from '../../../common/utils';
+import { PersonRefDto } from '../../leads/dto/entry.dto';
+import { LeaveSpanDto } from '../../leaves/dto/leave.dto';
 
 /** A sensible ceiling: no one converts a million leads a month. */
 const MAX_TARGET = 100_000;
@@ -51,6 +53,32 @@ export class MemberDto {
 
   @ApiPropertyOptional({ nullable: true, type: Date })
   removedAt?: Date | null;
+
+  @ApiPropertyOptional({
+    type: PersonRefDto,
+    nullable: true,
+    description: 'Who covers this member’s follow-ups here while he is on leave.',
+  })
+  backup: PersonRefDto | null;
+
+  @ApiPropertyOptional({
+    type: LeaveSpanDto,
+    nullable: true,
+    description: 'The leave the member is on today (IST), if any.',
+  })
+  onLeave: LeaveSpanDto | null;
+}
+
+export class SetBackupDto {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    description:
+      'An active member of the same project — not the member himself, not a Super Admin. Null clears it.',
+  })
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID('4')
+  backupUserId: string | null;
 }
 
 export class AddMemberDto {

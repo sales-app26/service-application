@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 
 import {
   CONFIG_NAMESPACE,
@@ -24,6 +24,7 @@ import {
 import { isSameIstDay, isUniqueViolation, istToday } from '../../common/utils';
 import { VisitConfig } from '../../config/configuration';
 import { FollowUp, Lead } from '../../database/entities';
+import { CoverageService } from '../access/coverage.service';
 import { ProjectAccessService } from '../access/project-access.service';
 import { LocationsService } from '../locations/locations.service';
 import { SupabaseStorageClient } from '../supabase/supabase-storage.client';
@@ -59,6 +60,11 @@ interface UploadedPhoto {
  *
  * Every save also stamps the lead's `last_activity_at` with the entry's time,
  * and a Converted entry may record the deal value and plan on the lead.
+ *
+ * While an owner is on leave, the backup covering for them logs follow-ups
+ * and status changes on their leads: the entry is the backup's, marked with
+ * `covering_for_id`, and the lead — owner and conversion credit — stays the
+ * owner's.
  */
 @Injectable()
 export class EntriesService {
@@ -68,6 +74,7 @@ export class EntriesService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(FollowUp) private readonly followUps: Repository<FollowUp>,
     private readonly access: ProjectAccessService,
+    private readonly coverage: CoverageService,
     private readonly leadAccess: LeadAccessService,
     private readonly locations: LocationsService,
     private readonly visitProof: VisitProofService,
@@ -84,7 +91,10 @@ export class EntriesService {
 
   // ---------------------------------------------------------------- follow-up
 
-  /** PRD §7.2. Only the owner logs; in a door-to-door project, with visit proof. */
+  /**
+   * PRD §7.2. Only the owner logs — or the backup covering for him — and in a
+   * door-to-door project with visit proof from the person at the door.
+   */
   async logFollowUp(
     actor: AuthenticatedUser,
     leadId: string,
@@ -95,7 +105,7 @@ export class EntriesService {
     if (replay) return replay;
 
     const lead = await this.leadAccess.findLiveLead(leadId);
-    await this.assertOwnerAtWork(actor, lead);
+    await this.assertCanLog(actor, lead);
     this.access.assertWritable(lead.project);
     assertFollowUpStatus(lead.status, dto.status);
 
@@ -131,8 +141,10 @@ export class EntriesService {
         await this.access.lockOpenProject(manager, lead.projectId);
         const locked = await this.leadAccess.lockLead(manager, leadId);
 
-        // The form may have been open while the lead was transferred away.
-        if (locked.ownerId !== actor.id) {
+        // The form may have been open while the lead was transferred away, or
+        // while the owner's leave ended.
+        const coveringFor = await this.coveredOwner(actor, locked, manager);
+        if (locked.ownerId !== actor.id && !coveringFor) {
           throw await this.leadAccess.notYoursError(actor, locked, manager);
         }
         if (!(await this.access.isActiveMember(locked.projectId, actor.id, manager))) {
@@ -153,6 +165,7 @@ export class EntriesService {
           leadId,
           projectId: locked.projectId,
           userId: actor.id,
+          coveringForId: coveringFor,
           entryType: EntryType.FOLLOW_UP,
           status: dto.status,
           note: dto.note,
@@ -233,7 +246,10 @@ export class EntriesService {
         await this.access.lockOpenProject(manager, lead.projectId);
         const locked = await this.leadAccess.lockLead(manager, leadId);
 
-        if (!visibility.isAdmin && locked.ownerId !== actor.id) {
+        const coveringFor = visibility.isCovering
+          ? await this.coveredOwner(actor, locked, manager)
+          : null;
+        if (!visibility.isAdmin && locked.ownerId !== actor.id && !coveringFor) {
           throw await this.leadAccess.notYoursError(actor, locked, manager);
         }
         assertManualStatusChange(locked.status, dto.status, visibility.isAdmin);
@@ -243,6 +259,7 @@ export class EntriesService {
           leadId,
           projectId: locked.projectId,
           userId: actor.id,
+          coveringForId: coveringFor,
           entryType: EntryType.STATUS_CHANGE,
           status: dto.status,
           note: dto.note,
@@ -254,8 +271,8 @@ export class EntriesService {
           updatedAt: now,
         });
 
-        // Credit goes to the owner, never to an admin who set it by hand;
-        // leaving Converted clears it and the target count drops.
+        // Credit goes to the owner, never to an admin or a backup who set it
+        // by hand; leaving Converted clears it and the target count drops.
         await manager.update(
           Lead,
           { id: leadId },
@@ -388,7 +405,8 @@ export class EntriesService {
 
   /**
    * PRD §5.7: photos are private. A fresh short-lived link for the person who
-   * logged the entry, the lead's owner, or an admin of the project.
+   * logged the entry, the lead's owner, the backup covering for the owner, or
+   * an admin of the project.
    */
   async photoUrl(actor: AuthenticatedUser, entryId: string): Promise<PhotoUrlDto> {
     const entry = await this.findViewableEntry(actor, entryId);
@@ -407,16 +425,32 @@ export class EntriesService {
 
   /**
    * Only the owner logs a follow-up — not an admin, even one who can read the
-   * lead (PRD §5.5) — and only while still a member of the project.
+   * lead (PRD §5.5) — and only while still a member of the project; or the
+   * backup covering for the owner while he is on leave.
    */
-  private async assertOwnerAtWork(actor: AuthenticatedUser, lead: Lead): Promise<void> {
+  private async assertCanLog(actor: AuthenticatedUser, lead: Lead): Promise<void> {
     const visibility = await this.leadAccess.visibility(actor, lead);
 
-    if (visibility.isOwner && visibility.isMember) return;
+    if ((visibility.isOwner && visibility.isMember) || visibility.isCovering) return;
     if (visibility.isAdmin) {
       throw new ForbiddenBusinessException(FOLLOW_UP_ERROR.ONLY_OWNER_LOGS);
     }
     throw await this.leadAccess.notYoursError(actor, lead);
+  }
+
+  /**
+   * The owner the actor is covering for on this locked lead, checked again in
+   * the transaction — null when he is the owner or not covering.
+   */
+  private async coveredOwner(
+    actor: AuthenticatedUser,
+    locked: Lead,
+    manager: EntityManager,
+  ): Promise<string | null> {
+    if (locked.ownerId === actor.id) return null;
+    return (await this.coverage.covers(actor.id, locked.ownerId, locked.projectId, manager))
+      ? locked.ownerId
+      : null;
   }
 
   private async replayFor(
@@ -449,7 +483,8 @@ export class EntriesService {
       entry.userId === actor.id ||
       (entry.lead.ownerId === actor.id &&
         (await this.access.isActiveMember(entry.projectId, actor.id))) ||
-      (await this.access.isAdminOf(actor, entry.projectId));
+      (await this.access.isAdminOf(actor, entry.projectId)) ||
+      (await this.coverage.covers(actor.id, entry.lead.ownerId, entry.projectId));
 
     if (!allowed) {
       throw new NotFoundBusinessException(FOLLOW_UP_ERROR.NOT_FOUND);

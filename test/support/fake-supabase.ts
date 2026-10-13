@@ -27,6 +27,12 @@ export class FakeSupabase {
   private readonly linkTokens = new Map<string, string>();
   private server!: Server;
   url = '';
+  /**
+   * Stands in for a database trigger on auth.users that refuses password
+   * changes it was not told about (Pronttera Connect shares the project and
+   * installs one). Answers whether this change may go ahead.
+   */
+  passwordGuard: ((userId: string) => Promise<boolean>) | null = null;
 
   constructor(
     private readonly jwtSecret: string,
@@ -50,6 +56,10 @@ export class FakeSupabase {
     const user = { id, email, password };
     this.users.set(id, user);
     return user;
+  }
+
+  private async passwordChangeAllowed(userId: string): Promise<boolean> {
+    return this.passwordGuard ? this.passwordGuard(userId) : true;
   }
 
   private mint(userId: string): string {
@@ -182,6 +192,7 @@ export class FakeSupabase {
     if (req.method === 'PUT' && path === '/user') {
       const userId = await this.bearerSubject(req);
       if (!userId) return send(res, 401, { msg: 'invalid JWT' });
+      if (!(await this.passwordChangeAllowed(userId))) return send(res, 500, GUARD_REFUSAL);
       this.setPassword(userId, String(json().password));
       return send(res, 200, { id: userId });
     }
@@ -197,6 +208,9 @@ export class FakeSupabase {
       if (!user) return send(res, 404, { msg: 'User not found' });
       if (req.method === 'PUT') {
         const changes = json() as { email?: string; password?: string };
+        if (changes.password && !(await this.passwordChangeAllowed(user.id))) {
+          return send(res, 500, GUARD_REFUSAL);
+        }
         if (changes.email) user.email = changes.email;
         if (changes.password) user.password = changes.password;
         return send(res, 200, { id: user.id, email: user.email });
@@ -301,4 +315,10 @@ const send = (res: ServerResponse, status: number, payload: unknown): void => {
     return;
   }
   res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(payload));
+};
+
+/** What Supabase answers when such a trigger raises. */
+const GUARD_REFUSAL = {
+  error_code: 'unexpected_failure',
+  msg: 'ERROR: Passwords can only be changed by an administrator (SQLSTATE 42501)',
 };

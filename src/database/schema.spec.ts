@@ -457,3 +457,197 @@ describe('05_sales_insights.sql', () => {
     expect(rows).toEqual([]);
   });
 });
+
+describe('06_team_collaboration.sql', () => {
+  let db: PGlite;
+  const owner = randomUUID();
+  const backup = randomUUID();
+  const project = randomUUID();
+  const location = randomUUID();
+  const lead = randomUUID();
+  const entry = randomUUID();
+
+  const rejects = (promise: Promise<unknown>, pattern: RegExp) =>
+    expect(promise).rejects.toThrow(pattern);
+
+  beforeAll(async () => {
+    db = new PGlite();
+    for (const file of [SQL_FILE.SALES_SCHEMA, SQL_FILE.USER_DELETION, SQL_FILE.SALES_INSIGHTS]) {
+      await db.exec(readSqlFile(file));
+    }
+    await db.exec(readSqlFile(SQL_FILE.TEAM_COLLABORATION));
+    await db.exec('SET search_path TO sales');
+    await db.query(
+      `INSERT INTO users (id, name, email, role) VALUES ($1, 'Owner', 'owner@x.in', 'sales_person'), ($2, 'Backup', 'backup@x.in', 'sales_person')`,
+      [owner, backup],
+    );
+    await db.query(
+      `INSERT INTO projects (id, name, type, start_date, created_by) VALUES ($1, 'Pune', 'online', '2026-10-01', $2)`,
+      [project, owner],
+    );
+    await db.query(`INSERT INTO locations (id, project_id, name) VALUES ($1, $2, 'Wanowrie')`, [
+      location,
+      project,
+    ]);
+    await db.query(`INSERT INTO project_members (project_id, user_id) VALUES ($1, $2), ($1, $3)`, [
+      project,
+      owner,
+      backup,
+    ]);
+    await db.query(
+      `INSERT INTO leads (id, project_id, owner_id, name, phone, location_id) VALUES ($1, $2, $3, 'Client', '9000000001', $4)`,
+      [lead, project, owner, location],
+    );
+    await db.query(
+      `INSERT INTO follow_ups (id, lead_id, project_id, user_id, entry_type, status, note) VALUES ($1, $2, $3, $4, 'follow_up', 'contacted', 'note')`,
+      [entry, lead, project, owner],
+    );
+  }, 30_000);
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('can run again without changing anything', async () => {
+    await expect(db.exec(readSqlFile(SQL_FILE.TEAM_COLLABORATION))).resolves.toBeDefined();
+  });
+
+  it('keeps a leave in order and at most 60 days long', async () => {
+    const leave = (startsOn: string, endsOn: string, note: string | null = null) =>
+      db.query(
+        `INSERT INTO user_leaves (user_id, starts_on, ends_on, note, created_by) VALUES ($1, $2, $3, $4, $1)`,
+        [owner, startsOn, endsOn, note],
+      );
+    await expect(leave('2026-10-13', '2026-12-12')).resolves.toBeDefined();
+    await rejects(leave('2026-10-13', '2026-12-13'), /user_leaves_span_max/);
+    await rejects(leave('2026-10-13', '2026-10-12'), /user_leaves_ends_after_start/);
+    await rejects(leave('2026-10-13', '2026-10-13', 'x'.repeat(201)), /user_leaves_note_length/);
+  });
+
+  it('never makes a member his own backup, nor an entry cover for its author', async () => {
+    await rejects(
+      db.query(`UPDATE project_members SET backup_user_id = user_id WHERE user_id = $1`, [owner]),
+      /project_members_backup_not_self/,
+    );
+    await expect(
+      db.query(`UPDATE project_members SET backup_user_id = $1 WHERE user_id = $2`, [
+        backup,
+        owner,
+      ]),
+    ).resolves.toBeDefined();
+    await rejects(
+      db.query(`UPDATE follow_ups SET covering_for_id = user_id WHERE id = $1`, [entry]),
+      /follow_ups_covering_not_self/,
+    );
+  });
+
+  describe('lead_comments', () => {
+    const comment = (fields: Record<string, unknown> = {}) => {
+      const row = {
+        project_id: project,
+        kind: 'comment',
+        body: 'Called twice.',
+        entry_id: null,
+        resolved_at: null,
+        resolved_by: null,
+        ...fields,
+      };
+      return db.query(
+        `INSERT INTO lead_comments (lead_id, project_id, user_id, kind, body, entry_id, resolved_at, resolved_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          lead,
+          row.project_id,
+          owner,
+          row.kind,
+          row.body,
+          row.entry_id,
+          row.resolved_at,
+          row.resolved_by,
+        ],
+      );
+    };
+
+    it('takes the four kinds and a body of 1 to 2000 characters', async () => {
+      await rejects(comment({ kind: 'praise' }), /lead_comments_kind_valid/);
+      await rejects(comment({ body: '   ' }), /lead_comments_body_length/);
+      await rejects(comment({ body: 'x'.repeat(2001) }), /lead_comments_body_length/);
+    });
+
+    it('keeps a comment in its lead’s project', async () => {
+      const other = randomUUID();
+      await db.query(
+        `INSERT INTO projects (id, name, type, start_date, created_by) VALUES ($1, 'Other', 'online', '2026-10-01', $2)`,
+        [other, owner],
+      );
+      await rejects(comment({ project_id: other }), /lead_comments_lead_same_project/);
+    });
+
+    it('ties feedback to an entry and resolution to a help request', async () => {
+      await rejects(comment({ kind: 'feedback' }), /lead_comments_feedback_has_entry/);
+      await expect(comment({ kind: 'feedback', entry_id: entry })).resolves.toBeDefined();
+      await rejects(
+        comment({ resolved_at: new Date(), resolved_by: backup }),
+        /lead_comments_resolve_help_only/,
+      );
+      await rejects(
+        comment({ kind: 'help', resolved_at: new Date() }),
+        /lead_comments_resolution_consistent/,
+      );
+    });
+
+    it('allows one open help request per lead', async () => {
+      await expect(comment({ kind: 'help' })).resolves.toBeDefined();
+      await rejects(comment({ kind: 'help' }), /lead_comments_one_open_help/);
+      await db.query(
+        `UPDATE lead_comments SET resolved_at = now(), resolved_by = $1 WHERE kind = 'help'`,
+        [backup],
+      );
+      await expect(comment({ kind: 'help' })).resolves.toBeDefined();
+    });
+  });
+
+  it('takes only the known notification kinds', async () => {
+    const notify = (kind: string) =>
+      db.query(`INSERT INTO notifications (user_id, kind, title) VALUES ($1, $2, 'Hello')`, [
+        owner,
+        kind,
+      ]);
+    await expect(notify('mention')).resolves.toBeDefined();
+    await rejects(notify('birthday'), /notifications_kind_valid/);
+  });
+
+  it('keeps a template’s label and body within their lengths, and dates its edits', async () => {
+    const template = (label: string, body: string) =>
+      db.query(
+        `INSERT INTO message_templates (project_id, label, body, created_by) VALUES ($1, $2, $3, $4) RETURNING id`,
+        [project, label, body, owner],
+      );
+    await rejects(template('x'.repeat(41), 'Hi {client}'), /message_templates_label_length/);
+    await rejects(template('Intro', ' '), /message_templates_body_length/);
+    const { rows } = await template('Intro', 'Hi {client}, this is {rep}.');
+    const id = (rows[0] as { id: string }).id;
+    await db.query(`UPDATE message_templates SET updated_at = '2026-01-01' WHERE id = $1`, [id]);
+    const { rows: updated } = await db.query<{ moved: boolean }>(
+      `UPDATE message_templates SET body = 'Hello {client}' WHERE id = $1
+       RETURNING updated_at > '2026-01-02' AS moved`,
+      [id],
+    );
+    expect(updated[0].moved).toBe(true);
+  });
+
+  it('reverts cleanly', async () => {
+    await db.exec(readSqlFile(SQL_FILE.TEAM_COLLABORATION_DOWN));
+    const { rows } = await db.query<{ name: string }>(
+      `SELECT table_name AS name FROM information_schema.tables
+        WHERE table_schema = 'sales'
+          AND table_name IN ('user_leaves', 'lead_comments', 'notifications', 'message_templates')
+       UNION ALL
+       SELECT table_name || '.' || column_name FROM information_schema.columns
+        WHERE table_schema = 'sales'
+          AND (table_name, column_name) IN (('project_members', 'backup_user_id'),
+               ('follow_ups', 'covering_for_id'))`,
+    );
+    expect(rows).toEqual([]);
+  });
+});

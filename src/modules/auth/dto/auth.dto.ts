@@ -13,6 +13,7 @@ import {
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
 import { ProjectStatus, ProjectType, TargetPeriod, UserRole } from '../../../common/enums';
 import { lowerTrimString, trimString } from '../../../common/utils';
+import { LeaveSpanDto } from '../../leaves/dto/leave.dto';
 
 export class LoginDto {
   @ApiProperty({
@@ -146,6 +147,20 @@ export class MeDto {
     description: '"You are not assigned to any project yet." for a member with no project.',
   })
   notice: string | null;
+
+  @ApiPropertyOptional({
+    type: LeaveSpanDto,
+    nullable: true,
+    description: 'The leave the caller is on today (IST), if any.',
+  })
+  onLeave: LeaveSpanDto | null;
+
+  @ApiPropertyOptional({
+    type: LeaveSpanDto,
+    nullable: true,
+    description: 'The caller’s soonest leave starting after today, if any.',
+  })
+  nextLeave: LeaveSpanDto | null;
 }
 
 export class SessionDto {

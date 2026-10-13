@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { AUTH_ERROR, CONFIG_NAMESPACE, ERROR_CODE } from '../../common/constants';
+import { AUTH_ERROR, COMMON_ERROR, CONFIG_NAMESPACE, ERROR_CODE } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { AppConfig, SupabaseConfig } from '../../config/configuration';
 import { AuthMailKind, MailService } from '../mail/mail.service';
@@ -208,10 +208,7 @@ export class SupabaseAuthClient {
     // Already worded for the user (e.g. the email could not be sent).
     if (error instanceof BusinessException) return error;
     if (error instanceof SupabaseCallError && error.failure === SupabaseFailure.RATE_LIMITED) {
-      return new BusinessException(
-        'Too many attempts. Please wait a minute and try again.',
-        ERROR_CODE.RATE_LIMITED,
-      );
+      return new BusinessException(COMMON_ERROR.RATE_LIMITED, ERROR_CODE.RATE_LIMITED);
     }
     return new BusinessException(
       AUTH_ERROR.AUTH_UNAVAILABLE,

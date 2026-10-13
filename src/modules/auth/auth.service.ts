@@ -8,6 +8,7 @@ import { UserRole } from '../../common/enums';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { blankToNull, normaliseIndianMobile } from '../../common/utils';
 import { ProjectMember, User } from '../../database/entities';
+import { LeaveLookupService } from '../leaves/leave-lookup.service';
 import {
   SupabaseAuthClient,
   SupabaseCallError,
@@ -22,6 +23,7 @@ import {
   SetPasswordDto,
   UpdateProfileDto,
 } from './dto/auth.dto';
+import { PasswordChangeApprovalService } from './password-change-approval.service';
 import { TokenVerifierService } from './token-verifier.service';
 
 /**
@@ -40,6 +42,8 @@ export class AuthService {
     @InjectRepository(ProjectMember) private readonly members: Repository<ProjectMember>,
     private readonly authClient: SupabaseAuthClient,
     private readonly tokenVerifier: TokenVerifierService,
+    private readonly leaves: LeaveLookupService,
+    private readonly passwordApprovals: PasswordChangeApprovalService,
   ) {}
 
   async login(dto: LoginDto): Promise<SessionDto> {
@@ -93,16 +97,32 @@ export class AuthService {
 
   /** Completes an invite or a reset link: the link's token sets the password. */
   async setPassword(dto: SetPasswordDto): Promise<void> {
+    let accessToken: string;
+    let userId: string;
     try {
       // The link's one-time token is spent here, not when the link is opened.
-      const accessToken = await this.spendTokenHash(dto.tokenHash, dto.type);
-      await this.tokenVerifier.verify(accessToken);
-      await this.authClient.setPasswordWithToken(accessToken, dto.password);
+      accessToken = await this.spendTokenHash(dto.tokenHash, dto.type);
+      ({ userId } = await this.tokenVerifier.verify(accessToken));
     } catch (error) {
       if (error instanceof SupabaseCallError && error.failure !== SupabaseFailure.REJECTED) {
         throw SupabaseAuthClient.toBusinessException(error);
       }
       throw new BusinessException(AUTH_ERROR.INVALID_SET_PASSWORD_LINK, ERROR_CODE.UNAUTHORIZED);
+    }
+
+    // The link is used up from here on, so a failure below must not read as
+    // "expired": the person needs a new link and should be told why.
+    try {
+      await this.passwordApprovals.approve(userId);
+      await this.authClient.setPasswordWithToken(accessToken, dto.password);
+    } catch (error) {
+      this.logger.error(
+        `Password from a ${dto.type} link not saved for ${userId}: ${errorText(error)}`,
+      );
+      if (error instanceof SupabaseCallError && error.failure === SupabaseFailure.RATE_LIMITED) {
+        throw SupabaseAuthClient.toBusinessException(error);
+      }
+      throw new BusinessException(AUTH_ERROR.PASSWORD_NOT_SAVED, ERROR_CODE.INTEGRATION_ERROR);
     }
   }
 
@@ -137,8 +157,10 @@ export class AuthService {
     }
 
     try {
+      await this.passwordApprovals.approve(user.id);
       await this.authClient.updateUserAsAdmin(user.id, { password: dto.newPassword });
     } catch (error) {
+      this.logger.error(`Password change not saved for ${user.id}: ${errorText(error)}`);
       throw SupabaseAuthClient.toBusinessException(error);
     }
   }
@@ -189,14 +211,17 @@ export class AuthService {
   }
 
   private async toMe(user: User): Promise<MeDto> {
-    const memberships =
+    const [memberships, onLeave, nextLeave] = await Promise.all([
       user.role === UserRole.SUPER_ADMIN
-        ? []
-        : await this.members.find({
+        ? Promise.resolve([] as ProjectMember[])
+        : this.members.find({
             where: { userId: user.id, isActive: true },
             relations: { project: true },
             order: { joinedAt: 'ASC' },
-          });
+          }),
+      this.leaves.onLeave([user.id]),
+      this.leaves.nextLeave([user.id]),
+    ]);
 
     const projects = memberships.map((membership) => ({
       id: membership.project.id,
@@ -218,6 +243,8 @@ export class AuthService {
         user.role !== UserRole.SUPER_ADMIN && projects.length === 0
           ? SUCCESS_MESSAGE.NO_PROJECTS
           : null,
+      onLeave: onLeave.get(user.id) ?? null,
+      nextLeave: nextLeave.get(user.id) ?? null,
     };
   }
 
@@ -228,3 +255,6 @@ export class AuthService {
     return SupabaseAuthClient.toBusinessException(error);
   }
 }
+
+const errorText = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);

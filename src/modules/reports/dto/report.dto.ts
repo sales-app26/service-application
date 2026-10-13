@@ -473,7 +473,7 @@ export class AttentionItemDto {
   @ApiPropertyOptional({
     type: PersonRefDto,
     nullable: true,
-    description: 'Who it is about; for a transfer, who asked for it.',
+    description: 'Who it is about; for a transfer or a help request, who asked.',
   })
   user: PersonRefDto | null;
 
@@ -491,6 +491,12 @@ export class AttentionItemDto {
     description: '`overdue_pile`: the overdue leads. `idle`: the person’s open leads.',
   })
   leadCount?: number;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: '`help_request`: the lead help was asked on.',
+  })
+  leadId?: string;
 }
 
 export class DashboardDto {

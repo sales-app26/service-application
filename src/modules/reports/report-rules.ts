@@ -85,18 +85,28 @@ export interface ScoredAttention {
 }
 
 const KIND_ORDER: readonly AttentionKind[] = [
+  AttentionKind.HELP_REQUEST,
   AttentionKind.BEHIND_TARGET,
   AttentionKind.OVERDUE_PILE,
   AttentionKind.IDLE,
   AttentionKind.STALE_TRANSFER,
 ];
 
+const HOURS_PER_DAY = 24;
+
 /**
  * Severity is the measure divided by the threshold that flagged it — 10
  * overdue leads (threshold 5) and 4 idle days (threshold 2) are both "twice
  * as bad as the line" — so different kinds compare fairly.
+ *
+ * A help request has no threshold: someone is waiting on an answer. It starts
+ * at `ATTENTION_HELP_BASE_SEVERITY` and climbs by one per day it has waited
+ * (the measure is hours), so it ranks above everything short of an extreme.
  */
 export const attentionSeverity = (kind: AttentionKind, measure: number): number => {
+  if (kind === AttentionKind.HELP_REQUEST) {
+    return BUSINESS_RULE.ATTENTION_HELP_BASE_SEVERITY + Math.max(measure, 0) / HOURS_PER_DAY;
+  }
   const threshold = {
     [AttentionKind.BEHIND_TARGET]: BUSINESS_RULE.ATTENTION_BEHIND_TARGET_POINTS,
     [AttentionKind.OVERDUE_PILE]: BUSINESS_RULE.ATTENTION_OVERDUE_PILE,

@@ -21,6 +21,8 @@ import {
 import { blankToNull, escapeLike, normaliseIndianMobile } from '../../common/utils';
 import { ProjectMember, User } from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
+import { LeaveSpanDto } from '../leaves/dto/leave.dto';
+import { LeaveLookupService } from '../leaves/leave-lookup.service';
 import {
   SupabaseAuthClient,
   SupabaseCallError,
@@ -55,6 +57,7 @@ export class UsersService {
     private readonly access: ProjectAccessService,
     private readonly authClient: SupabaseAuthClient,
     private readonly transferRejections: TransferRejectionsService,
+    private readonly leaves: LeaveLookupService,
   ) {}
 
   // -------------------------------------------------------------------- reads
@@ -119,11 +122,25 @@ export class UsersService {
       .getManyAndCount();
 
     const manageable = await this.manageableIds(actor, rows);
-    const outside = this.access.isSuperAdmin(actor)
-      ? new Set<string>()
-      : await this.access.withProjectsOutside(actor.id, [...manageable]);
+    const [outside, onLeave] = await Promise.all([
+      this.access.isSuperAdmin(actor)
+        ? Promise.resolve(new Set<string>())
+        : this.access.withProjectsOutside(actor.id, [...manageable]),
+      // Leave is shown only for people the caller manages, as `GET /leaves` would.
+      this.leaves.onLeave(rows.filter((row) => manageable.has(row.id)).map((row) => row.id)),
+    ]);
     return PaginatedResponseDto.from(
-      [rows.map((row) => UserDto.from(row, manageable.has(row.id), !outside.has(row.id))), total],
+      [
+        rows.map((row) =>
+          UserDto.from(
+            row,
+            manageable.has(row.id),
+            !outside.has(row.id),
+            onLeave.get(row.id) ?? null,
+          ),
+        ),
+        total,
+      ],
       query.page,
       query.limit,
     );
@@ -141,7 +158,7 @@ export class UsersService {
     }
 
     const canManage = await this.canManage(actor, user);
-    return UserDto.from(user, canManage, canManage && (await this.coversAccount(actor, user.id)));
+    return this.toDto(user, canManage, canManage && (await this.coversAccount(actor, user.id)));
   }
 
   // ------------------------------------------------------------------- writes
@@ -179,6 +196,7 @@ export class UsersService {
           createdBy: actor.id,
         }),
       );
+      // A new person has no leave yet.
       return UserDto.from(saved, true);
     } catch (error) {
       // Two admins creating the same email at once, or a database outage:
@@ -194,7 +212,7 @@ export class UsersService {
     if (dto.name !== undefined) user.name = dto.name;
     if (dto.phone !== undefined) user.phone = this.normalisePhone(dto.phone);
 
-    return UserDto.from(await this.users.save(user), true);
+    return this.toDto(await this.users.save(user), true);
   }
 
   /**
@@ -226,7 +244,7 @@ export class UsersService {
     });
 
     user.isActive = false;
-    return UserDto.from(user, true);
+    return this.toDto(user, true);
   }
 
   async reactivate(actor: AuthenticatedUser, userId: string): Promise<UserDto> {
@@ -237,7 +255,7 @@ export class UsersService {
     }
 
     user.isActive = true;
-    return UserDto.from(await this.users.save(user), true);
+    return this.toDto(await this.users.save(user), true);
   }
 
   /** Super Admin only. History stays under the same person (Assumption 10). */
@@ -258,7 +276,7 @@ export class UsersService {
     user.role = dto.role;
     const saved = await this.users.save(user);
     this.logger.log(`Role of ${user.id} changed to ${dto.role} by ${actor.id}`);
-    return UserDto.from(saved, true);
+    return this.toDto(saved, true);
   }
 
   /** Super Admin only. The person signs in with the new email from then on. */
@@ -286,7 +304,7 @@ export class UsersService {
     user.email = dto.email;
     const saved = await this.users.save(user);
     this.logger.log(`Email of ${user.id} changed by ${actor.id}`);
-    return UserDto.from(saved, true);
+    return this.toDto(saved, true);
   }
 
   /** A reset link the admin shares by hand: for people who can't find, or never got, the email. */
@@ -394,6 +412,11 @@ export class UsersService {
           WHERE user_id = $1 AND is_active`,
         [user.id],
       );
+      // Nobody can be covered by someone who no longer works anywhere.
+      await manager.query(
+        `UPDATE ${SQL_TABLE.PROJECT_MEMBERS} SET backup_user_id = NULL WHERE backup_user_id = $1`,
+        [user.id],
+      );
       await manager.update(
         User,
         { id: user.id },
@@ -416,6 +439,18 @@ export class UsersService {
   }
 
   // ------------------------------------------------------------------ helpers
+
+  /** One user; leave only for someone the caller manages, as `GET /leaves` would. */
+  private async toDto(
+    user: User,
+    canManage: boolean,
+    canManageAccount = canManage,
+  ): Promise<UserDto> {
+    const onLeave = canManage
+      ? await this.leaves.onLeave([user.id])
+      : new Map<string, LeaveSpanDto>();
+    return UserDto.from(user, canManage, canManageAccount, onLeave.get(user.id) ?? null);
+  }
 
   async findOrFail(userId: string): Promise<User> {
     const user = await this.users.findOne({ where: { id: userId } });
@@ -468,10 +503,8 @@ export class UsersService {
     return user;
   }
 
-  private async canManage(actor: AuthenticatedUser, user: User): Promise<boolean> {
-    if (this.access.isSuperAdmin(actor)) return true;
-    if (actor.role !== UserRole.MODERATOR || user.role !== UserRole.SALES_PERSON) return false;
-    return user.createdBy === actor.id || (await this.access.shareActiveProject(actor.id, user.id));
+  private canManage(actor: AuthenticatedUser, user: User): Promise<boolean> {
+    return this.access.canManagePerson(actor, user);
   }
 
   /** `canManage` for a page of users in one query rather than one per row. */

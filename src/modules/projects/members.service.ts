@@ -19,8 +19,10 @@ import {
 } from '../../common/exceptions/business.exception';
 import { ProjectMember, User } from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
+import { LeaveSpanDto } from '../leaves/dto/leave.dto';
+import { LeaveLookupService } from '../leaves/leave-lookup.service';
 import { TransferRejectionsService } from '../transfers/transfer-rejections.service';
-import { AddMemberDto, MemberDto, SetTargetDto } from './dto/member.dto';
+import { AddMemberDto, MemberDto, SetBackupDto, SetTargetDto } from './dto/member.dto';
 
 /**
  * Who works in a project, and their target (PRD §5.4).
@@ -37,11 +39,13 @@ export class MembersService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly access: ProjectAccessService,
     private readonly transferRejections: TransferRejectionsService,
+    private readonly leaves: LeaveLookupService,
   ) {}
 
   /**
    * Admins see everyone with contact details and targets. A member sees the
    * active members' names and roles only — enough to pick a transfer recipient.
+   * Everyone sees who is on leave today and who backs up whom.
    */
   async list(
     actor: AuthenticatedUser,
@@ -53,14 +57,15 @@ export class MembersService {
 
     const rows = await this.members.find({
       where: { projectId, ...(isAdmin && includeRemoved ? {} : { isActive: true }) },
-      relations: { user: true },
+      relations: { user: true, backupUser: true },
     });
+    const onLeave = await this.leaves.onLeave(rows.map((row) => row.userId));
 
     return rows
       .sort(
         (a, b) => Number(b.isActive) - Number(a.isActive) || a.user.name.localeCompare(b.user.name),
       )
-      .map((row) => this.toDto(row, isAdmin));
+      .map((row) => this.toDto(row, isAdmin, onLeave.get(row.userId) ?? null));
   }
 
   async add(actor: AuthenticatedUser, projectId: string, dto: AddMemberDto): Promise<MemberDto> {
@@ -84,11 +89,11 @@ export class MembersService {
       throw new ForbiddenBusinessException(MEMBER_ERROR.MODERATOR_ADDS_SALES_ONLY);
     }
 
-    const membership = await this.upsertMembership(projectId, user.id, actor.id, {
+    await this.upsertMembership(projectId, user.id, actor.id, {
       targetCount: dto.targetCount,
       targetPeriod: dto.targetPeriod,
     });
-    return this.toDto({ ...membership, user }, true);
+    return this.present(projectId, user.id);
   }
 
   /**
@@ -111,6 +116,12 @@ export class MembersService {
     const removedAt = new Date();
     await this.dataSource.transaction(async (manager) => {
       await manager.update(ProjectMember, { id: membership.id }, { isActive: false, removedAt });
+      // Nobody here is covered by someone who no longer works here.
+      await manager.update(
+        ProjectMember,
+        { projectId, backupUserId: userId },
+        { backupUserId: null },
+      );
       await this.transferRejections.rejectPending(
         manager,
         { userId, projectId },
@@ -119,7 +130,7 @@ export class MembersService {
       );
     });
 
-    return this.toDto({ ...membership, isActive: false, removedAt }, true);
+    return this.present(projectId, userId);
   }
 
   /**
@@ -145,13 +156,53 @@ export class MembersService {
       throw new ForbiddenBusinessException(MEMBER_ERROR.TARGET_NOT_ALLOWED);
     }
 
-    membership.targetCount = dto.targetCount;
-    membership.targetPeriod = dto.targetPeriod;
     await this.members.update(
       { id: membership.id },
       { targetCount: dto.targetCount, targetPeriod: dto.targetPeriod },
     );
-    return this.toDto(membership, true);
+    return this.present(projectId, userId);
+  }
+
+  /**
+   * Who covers this member's follow-ups in this project while he is on leave.
+   * Same reach as targets: a moderator sets it for sales persons in his
+   * project and for himself. The backup is an active, working member of the
+   * same project — never the member himself or a Super Admin.
+   */
+  async setBackup(
+    actor: AuthenticatedUser,
+    projectId: string,
+    userId: string,
+    dto: SetBackupDto,
+  ): Promise<MemberDto> {
+    const project = await this.access.assertAdmin(actor, projectId);
+    this.access.assertWritable(project);
+    const membership = await this.findActiveOrFail(projectId, userId);
+
+    if (
+      actor.role === UserRole.MODERATOR &&
+      membership.user.role !== UserRole.SALES_PERSON &&
+      membership.userId !== actor.id
+    ) {
+      throw new ForbiddenBusinessException(MEMBER_ERROR.BACKUP_NOT_ALLOWED);
+    }
+
+    if (dto.backupUserId !== null) {
+      const backup = await this.users.findOne({ where: { id: dto.backupUserId } });
+      const valid =
+        backup !== null &&
+        backup.id !== userId &&
+        backup.isActive &&
+        backup.deletedAt === null &&
+        backup.role !== UserRole.SUPER_ADMIN &&
+        (await this.access.isActiveMember(projectId, backup.id));
+      if (!valid) {
+        throw new BusinessException(MEMBER_ERROR.BACKUP_INVALID, ERROR_CODE.UNPROCESSABLE);
+      }
+    }
+
+    await this.members.update({ id: membership.id }, { backupUserId: dto.backupUserId });
+    return this.present(projectId, userId);
   }
 
   // ------------------------------------------------------------------ helpers
@@ -216,7 +267,17 @@ export class MembersService {
     }
   }
 
-  private toDto(row: ProjectMember, isAdmin: boolean): MemberDto {
+  /** One membership as an admin sees it, read back after a change. */
+  private async present(projectId: string, userId: string): Promise<MemberDto> {
+    const row = await this.members.findOneOrFail({
+      where: { projectId, userId },
+      relations: { user: true, backupUser: true },
+    });
+    const onLeave = await this.leaves.onLeave([userId]);
+    return this.toDto(row, true, onLeave.get(userId) ?? null);
+  }
+
+  private toDto(row: ProjectMember, isAdmin: boolean, onLeave: LeaveSpanDto | null): MemberDto {
     return {
       userId: row.userId,
       name: row.user.name,
@@ -233,6 +294,8 @@ export class MembersService {
             removedAt: row.removedAt,
           }
         : {}),
+      backup: row.backupUser ? { id: row.backupUser.id, name: row.backupUser.name } : null,
+      onLeave,
     };
   }
 }

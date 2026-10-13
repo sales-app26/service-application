@@ -6,6 +6,7 @@ import {
   BUSINESS_RULE,
   COMMON_ERROR,
   ERROR_CODE,
+  REPORT_ERROR,
   SQL_TABLE,
   USER_ERROR,
 } from '../../common/constants';
@@ -49,7 +50,7 @@ export class SummaryService {
     }
     if (daysBetween(from, to) + 1 > BUSINESS_RULE.SUMMARY_MAX_DAYS) {
       throw new BusinessException(
-        `A summary can cover at most ${BUSINESS_RULE.SUMMARY_MAX_DAYS} days.`,
+        REPORT_ERROR.SUMMARY_RANGE_TOO_LONG,
         ERROR_CODE.VALIDATION_FAILED,
       );
     }

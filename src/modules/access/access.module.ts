@@ -1,11 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 
+import { CoverageService } from './coverage.service';
 import { ProjectAccessService } from './project-access.service';
 
-/** Project scope, used by every feature module. */
+/** Project scope and leave cover, used by every feature module. */
 @Global()
 @Module({
-  providers: [ProjectAccessService],
-  exports: [ProjectAccessService],
+  providers: [ProjectAccessService, CoverageService],
+  exports: [ProjectAccessService, CoverageService],
 })
 export class AccessModule {}
