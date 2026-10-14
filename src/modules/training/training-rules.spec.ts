@@ -4,7 +4,10 @@ import {
   gradeAnswers,
   learnerContent,
   normalizePayload,
+  parsePlaylistFeed,
+  parsePlaylistLink,
   parseYoutubeLink,
+  playlistProgress,
   QuizPayload,
   RoleplayPayload,
   VideoPayload,
@@ -192,5 +195,77 @@ describe('gradeAnswers', () => {
     expect(completionPercent(3, 4)).toBe(75);
     expect(completionPercent(5, 4)).toBe(100);
     expect(completionPercent(0, 0)).toBe(100);
+  });
+});
+
+describe('playlists', () => {
+  it.each([
+    [
+      'https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG',
+      'PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG',
+    ],
+    [
+      'https://youtube.com/watch?v=dQw4w9WgXcQ&list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG',
+      'PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG',
+    ],
+    ['PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', 'PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG'],
+  ])('reads the playlist id from %s', (link, id) => {
+    expect(parsePlaylistLink(link)).toBe(id);
+  });
+
+  it.each([
+    'https://youtu.be/dQw4w9WgXcQ',
+    'dQw4w9WgXcQ',
+    'https://vimeo.com/showcase/1',
+    'nonsense',
+  ])('refuses %s', (link) => {
+    expect(parsePlaylistLink(link)).toBeNull();
+  });
+
+  it('lists a feed’s videos in order, decoding titles', () => {
+    const xml = `<feed><title>Frostique app tutorial</title>
+      <entry><yt:videoId>aaaaaaaaaaa</yt:videoId><title>1 · One app &amp; two sides</title></entry>
+      <entry><yt:videoId>bbbbbbbbbbb</yt:videoId><title>2 · Getting started</title></entry>
+      <entry><yt:videoId>bad</yt:videoId><title>Broken</title></entry></feed>`;
+    expect(parsePlaylistFeed(xml)).toEqual({
+      title: 'Frostique app tutorial',
+      items: [
+        { youtubeId: 'aaaaaaaaaaa', title: '1 · One app & two sides' },
+        { youtubeId: 'bbbbbbbbbbb', title: '2 · Getting started' },
+      ],
+    });
+  });
+
+  it('a playlist is done when every module is watched to 90%', () => {
+    const items = [
+      { youtubeId: 'aaaaaaaaaaa', title: 'A' },
+      { youtubeId: 'bbbbbbbbbbb', title: 'B' },
+    ];
+    expect(playlistProgress(items, { aaaaaaaaaaa: 95 }, 90)).toEqual({
+      percent: 50,
+      complete: false,
+    });
+    expect(playlistProgress(items, { aaaaaaaaaaa: 95, bbbbbbbbbbb: 90 }, 90)).toEqual({
+      percent: 100,
+      complete: true,
+    });
+    expect(playlistProgress([], {}, 90)).toEqual({ percent: 0, complete: false });
+  });
+
+  it('keeps the modules an admin sends, and shows reps thumbnails', () => {
+    const p = normalizePayload(TrainingKind.PLAYLIST, {
+      url: 'https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG',
+      items: [{ youtubeId: 'aaaaaaaaaaa', title: 'Module 1' }, { youtubeId: 'nope' }],
+    });
+    expect(p).toEqual({
+      playlistId: 'PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG',
+      items: [{ youtubeId: 'aaaaaaaaaaa', title: 'Module 1' }],
+    });
+    expect(learnerContent(TrainingKind.PLAYLIST, p as never, false)).toMatchObject({
+      items: [{ thumbnailUrl: 'https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg' }],
+    });
+    expect(() =>
+      normalizePayload(TrainingKind.PLAYLIST, { url: 'https://youtu.be/dQw4w9WgXcQ' }),
+    ).toThrow('playlist link');
   });
 });

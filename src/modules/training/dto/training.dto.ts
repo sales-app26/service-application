@@ -276,6 +276,13 @@ export class LessonProgressDto {
 
   @ApiProperty({ format: 'date-time', nullable: true, type: String })
   completedAt: string | null;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    description: 'A playlist: how much of each module (by YouTube id) has been watched.',
+  })
+  watched: Record<string, number>;
 }
 
 export class LearnerLessonDto {
@@ -381,6 +388,12 @@ export class LessonProgressInputDto {
   @Min(0)
   @Max(24 * 3600)
   positionSeconds?: number;
+
+  @ApiPropertyOptional({ description: 'A playlist: the module (YouTube video id) this is about.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  moduleId?: string;
 
   @ApiPropertyOptional({ description: 'Mark a document, card or check-free video done.' })
   @IsOptional()

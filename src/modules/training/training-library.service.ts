@@ -32,7 +32,8 @@ import {
   UpdateCourseDto,
   UpdateLessonDto,
 } from './dto/training.dto';
-import { DEFAULT_STEP, normalizePayload } from './training-rules';
+import { DEFAULT_STEP, normalizePayload, PlaylistPayload } from './training-rules';
+import { YoutubePlaylistClient } from './youtube-playlist.client';
 
 /** A file as multer hands it over. */
 export interface UploadedLessonFile {
@@ -62,6 +63,7 @@ export class TrainingLibraryService {
     @InjectRepository(TrainingItem) private readonly items: Repository<TrainingItem>,
     private readonly access: ProjectAccessService,
     private readonly storage: SupabaseStorageClient,
+    private readonly playlists: YoutubePlaylistClient,
   ) {}
 
   // ---------------------------------------------------------------- courses
@@ -175,7 +177,12 @@ export class TrainingLibraryService {
     const lesson = await this.findEditable(actor, lessonId, true);
     const payload =
       dto.payload !== undefined
-        ? normalizePayload(lesson.kind, dto.payload, lesson.payload)
+        ? await this.withModules(
+            lesson.kind,
+            normalizePayload(lesson.kind, dto.payload, lesson.payload),
+            dto.payload,
+            lesson.payload,
+          )
         : undefined;
     if (dto.step !== undefined) lesson.step = dto.step;
     if (dto.title !== undefined) lesson.title = dto.title;
@@ -305,7 +312,12 @@ export class TrainingLibraryService {
     dto: CreateLessonDto,
     owner: { courseId: string | null; projectId: string | null },
   ): Promise<LessonDto> {
-    const payload = normalizePayload(dto.kind, dto.payload);
+    const payload = await this.withModules(
+      dto.kind,
+      normalizePayload(dto.kind, dto.payload),
+      dto.payload,
+      null,
+    );
     const saved = await this.items.save(
       this.items.create({
         ...owner,
@@ -321,6 +333,27 @@ export class TrainingLibraryService {
       }),
     );
     return toLessonDto(await this.items.findOneByOrFail({ id: saved.id }));
+  }
+
+  /**
+   * A playlist lesson's modules, read from YouTube when its link is new or the admin asks to
+   * refresh (`refresh: true`); otherwise the titles the admin kept or edited. Other kinds pass
+   * through unchanged.
+   */
+  private async withModules<T>(
+    kind: TrainingKind,
+    payload: T,
+    raw: Record<string, unknown>,
+    current: Record<string, unknown> | null,
+  ): Promise<T> {
+    if (kind !== TrainingKind.PLAYLIST) return payload;
+    const next = payload as unknown as PlaylistPayload;
+    const before = current as unknown as PlaylistPayload | null;
+    const samePlaylist = before?.playlistId === next.playlistId;
+    if (next.items.length > 0 && samePlaylist && raw.refresh !== true) return payload;
+    const listed = await this.playlists.list(next.playlistId);
+    const items = listed?.items ?? (samePlaylist ? (before?.items ?? []) : []);
+    return { ...next, items: items.slice(0, BUSINESS_RULE.PLAYLIST_MAX_ITEMS) } as unknown as T;
   }
 
   private async findCourse(courseId: string): Promise<TrainingCourse> {

@@ -139,6 +139,8 @@ export const BUSINESS_RULE = {
   QUIZ_EXPLANATION_MAX_LENGTH: 600,
   QUIZ_DEFAULT_PASS_PERCENT: 80,
   VIDEO_MAX_CHECKS: 5,
+  /** Modules read from one playlist (YouTube's feed lists the first 15). */
+  PLAYLIST_MAX_ITEMS: 50,
   /** A video counts as watched at this share. */
   VIDEO_DONE_PERCENT: 90,
   /** Quiz tries per person per lesson per India day. */

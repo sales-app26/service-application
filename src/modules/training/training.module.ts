@@ -7,6 +7,7 @@ import { TrainingLibraryController } from './training-library.controller';
 import { TrainingLibraryService } from './training-library.service';
 import { TrainingController } from './training.controller';
 import { TrainingService } from './training.service';
+import { YoutubePlaylistClient } from './youtube-playlist.client';
 
 /** Training inside every campaign: library, lessons, progress, quizzes and practice pitches. */
 @Module({
@@ -17,6 +18,7 @@ import { TrainingService } from './training.service';
     TrainingService,
     RoleplayService,
     RoleplayCoachClient,
+    YoutubePlaylistClient,
   ],
 })
 export class TrainingModule {}

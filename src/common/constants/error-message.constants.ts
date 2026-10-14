@@ -315,6 +315,8 @@ export const TRAINING_ERROR = {
   WRONG_KIND: 'This lesson doesn’t work that way.',
   YOUTUBE_LINK:
     'Paste a YouTube link, like https://youtu.be/… or https://www.youtube.com/watch?v=…',
+  PLAYLIST_LINK: 'Paste a YouTube playlist link, like https://www.youtube.com/playlist?list=…',
+  MODULE_NOT_IN_PLAYLIST: 'That video isn’t one of this playlist’s modules.',
   VIDEO_TIMES: 'The end time must be after the start time.',
   DOCUMENT_SOURCE: 'Upload a PDF or image, or paste a link to the document.',
   LINK_FORMAT: 'The link must start with https://',

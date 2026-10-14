@@ -549,4 +549,121 @@ describe('Training (e2e)', () => {
       expect(data.certifiedAt).not.toBeNull();
     });
   });
+
+  // ---------------------------------------------------------------- the app tutorial
+
+  describe('app tutorial (a YouTube playlist)', () => {
+    const PLAYLIST = 'PLfrostiqueAppTutorial01';
+    const modules = Array.from({ length: 3 }, (_, i) => ({
+      id: `module${i + 1}xxxx`.slice(0, 11),
+      title: `${i + 1} · Module & more`,
+    }));
+    let tutorial: string;
+
+    beforeAll(() => {
+      harness.youtube.playlists.set(PLAYLIST, modules);
+    });
+
+    it('takes only the playlist link and lists its modules from YouTube', async () => {
+      const bad = await meera.post(`/projects/${projectId}/training/items`, {
+        kind: 'playlist',
+        title: 'App tutorial',
+        payload: { url: 'https://youtu.be/dQw4w9WgXcQ' },
+      });
+      expect(bad.status).toBe(400);
+      expect(bad.body.message).toContain('playlist');
+
+      const res = await meera.post(`/projects/${projectId}/training/items`, {
+        kind: 'playlist',
+        title: 'Frostique app tutorial',
+        required: false,
+        payload: { url: `https://www.youtube.com/playlist?list=${PLAYLIST}` },
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data).toMatchObject({
+        step: 'tutorial',
+        payload: {
+          playlistId: PLAYLIST,
+          items: modules.map((m) => ({ youtubeId: m.id, title: m.title })),
+        },
+      });
+      tutorial = res.body.data.id;
+      expect(harness.youtube.requests).toContain(PLAYLIST);
+    });
+
+    it('keeps the admin’s module titles until asked to refresh from YouTube', async () => {
+      const renamed = await meera.patch(`/training/items/${tutorial}`, {
+        payload: {
+          playlistId: PLAYLIST,
+          items: modules.map((m, i) => ({ youtubeId: m.id, title: `Module ${i + 1}` })),
+        },
+      });
+      expect(renamed.status).toBe(200);
+      expect(renamed.body.data.payload.items[0].title).toBe('Module 1');
+
+      harness.youtube.playlists.set(PLAYLIST, [
+        ...modules,
+        { id: 'module4xxxx', title: '4 · New' },
+      ]);
+      const refreshed = await meera.patch(`/training/items/${tutorial}`, {
+        payload: { playlistId: PLAYLIST, refresh: true },
+      });
+      expect(refreshed.body.data.payload.items).toHaveLength(4);
+      expect(refreshed.body.data.payload.items[0].title).toBe(modules[0].title);
+      harness.youtube.playlists.set(PLAYLIST, modules);
+      await meera.patch(`/training/items/${tutorial}`, {
+        payload: { playlistId: PLAYLIST, refresh: true },
+      });
+    });
+
+    it('reps see the modules with thumbnails', async () => {
+      const mine = lessonOf(await syllabus(priya), tutorial);
+      expect(mine).toMatchObject({ kind: 'playlist', step: 'tutorial' });
+      expect(mine.content.items[0]).toMatchObject({
+        youtubeId: modules[0].id,
+        thumbnailUrl: `https://i.ytimg.com/vi/${modules[0].id}/hqdefault.jpg`,
+      });
+      expect(mine.progress.watched).toEqual({});
+    });
+
+    it('tracks each module, and is done when every module is watched', async () => {
+      const post = (body: Record<string, unknown>) =>
+        priya.post(`/training/items/${tutorial}/progress`, { projectId, ...body });
+
+      expect((await post({ percent: 50 })).status).toBe(400);
+      expect((await post({ moduleId: 'notinthelst', percent: 50 })).status).toBe(400);
+
+      const first = await post({ moduleId: modules[0].id, percent: 95 });
+      expect(first.status).toBe(200);
+      expect(first.body.data.progress).toMatchObject({
+        percent: 33,
+        completedAt: null,
+        watched: { [modules[0].id]: 95 },
+      });
+      // A rewind never lowers what was watched.
+      const rewound = await post({ moduleId: modules[0].id, percent: 10 });
+      expect(rewound.body.data.progress.watched[modules[0].id]).toBe(95);
+
+      await post({ moduleId: modules[1].id, done: true });
+      const last = await post({ moduleId: modules[2].id, percent: 92 });
+      expect(last.body.data.progress).toMatchObject({ percent: 100 });
+      expect(last.body.data.progress.completedAt).not.toBeNull();
+    });
+
+    it('a playlist YouTube won’t list plays whole, and a tap marks it watched', async () => {
+      const res = await meera.post(`/projects/${projectId}/training/items`, {
+        kind: 'playlist',
+        title: 'Private playlist',
+        required: false,
+        payload: { url: 'https://www.youtube.com/playlist?list=PLprivateNotListed' },
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.payload).toEqual({ playlistId: 'PLprivateNotListed', items: [] });
+      const done = await priya.post(`/training/items/${res.body.data.id}/progress`, {
+        projectId,
+        done: true,
+      });
+      expect(done.body.data.progress).toMatchObject({ percent: 100 });
+    });
+  });
 });

@@ -18,7 +18,12 @@ import {
 } from '../../common/exceptions/business.exception';
 import { istStartOfDay, istToday, isSameIstDay } from '../../common/utils';
 import { TrainingConfig } from '../../config/configuration';
-import { TrainingCertification, TrainingItem, TrainingProgress } from '../../database/entities';
+import {
+  Project,
+  TrainingCertification,
+  TrainingItem,
+  TrainingProgress,
+} from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
 import { SupabaseStorageClient } from '../supabase/supabase-storage.client';
 import { CampaignLessonsService } from './campaign-lessons.service';
@@ -38,6 +43,8 @@ import {
   DocumentPayload,
   gradeAnswers,
   learnerContent,
+  playlistProgress,
+  PlaylistPayload,
   QuizPayload,
   VideoPayload,
 } from './training-rules';
@@ -48,6 +55,7 @@ const NO_PROGRESS: LessonProgressDto = {
   bestScore: null,
   attempts: 0,
   completedAt: null,
+  watched: {},
 };
 
 const toProgressDto = (row: TrainingProgress | undefined): LessonProgressDto =>
@@ -58,6 +66,7 @@ const toProgressDto = (row: TrainingProgress | undefined): LessonProgressDto =>
         bestScore: row.bestScore,
         attempts: row.attempts,
         completedAt: row.completedAt ? row.completedAt.toISOString() : null,
+        watched: row.details?.watched ?? {},
       }
     : NO_PROGRESS;
 
@@ -151,6 +160,15 @@ export class TrainingService {
       throw new BusinessException(TRAINING_ERROR.WRONG_KIND, ERROR_CODE.VALIDATION_FAILED);
     }
     const row = await this.loadProgress(actor.id, lesson.id);
+    if (lesson.kind === TrainingKind.PLAYLIST) {
+      return this.recordModule(
+        actor,
+        row,
+        lesson.payload as unknown as PlaylistPayload,
+        project,
+        dto,
+      );
+    }
     if (dto.percent !== undefined) row.percent = Math.max(row.percent, dto.percent);
     if (dto.positionSeconds !== undefined) row.positionSeconds = dto.positionSeconds;
 
@@ -163,6 +181,49 @@ export class TrainingService {
     if (!row.completedAt && !hasChecks && (dto.done === true || watched)) {
       row.completedAt = new Date();
       row.percent = 100;
+    }
+    await this.progress.save(row);
+    const certifiedNow = row.completedAt
+      ? await this.lessons.certifyIfComplete(actor.id, actor.name, project)
+      : false;
+    return { progress: toProgressDto(row), certifiedNow };
+  }
+
+  /**
+   * One module of a playlist watched (or part of it). The lesson is done when every module
+   * is watched to 90%. A playlist YouTube didn't list is marked done by the rep (`done`).
+   */
+  private async recordModule(
+    actor: AuthenticatedUser,
+    row: TrainingProgress,
+    playlist: PlaylistPayload,
+    project: Pick<Project, 'id' | 'name'>,
+    dto: LessonProgressInputDto,
+  ): Promise<LessonDoneDto> {
+    const items = playlist.items ?? [];
+    if (items.length === 0) {
+      if (dto.done === true && !row.completedAt) {
+        row.completedAt = new Date();
+        row.percent = 100;
+      }
+    } else {
+      if (!dto.moduleId || !items.some((i) => i.youtubeId === dto.moduleId)) {
+        throw new BusinessException(
+          TRAINING_ERROR.MODULE_NOT_IN_PLAYLIST,
+          ERROR_CODE.VALIDATION_FAILED,
+        );
+      }
+      const watched = { ...(row.details?.watched ?? {}) };
+      const seen = dto.done === true ? 100 : (dto.percent ?? 0);
+      watched[dto.moduleId] = Math.max(watched[dto.moduleId] ?? 0, seen);
+      row.details = { watched };
+      const { percent, complete } = playlistProgress(
+        items,
+        watched,
+        BUSINESS_RULE.VIDEO_DONE_PERCENT,
+      );
+      row.percent = Math.max(row.percent, percent);
+      if (complete && !row.completedAt) row.completedAt = new Date();
     }
     await this.progress.save(row);
     const certifiedNow = row.completedAt
@@ -351,6 +412,7 @@ export class TrainingService {
         dayAttempts: 0,
         lastAttemptAt: null,
         completedAt: null,
+        details: {},
       })
     );
   }

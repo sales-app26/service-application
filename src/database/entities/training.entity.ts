@@ -146,6 +146,10 @@ export class TrainingProgress {
   @Column({ name: 'completed_at', type: PG_TYPE.TIMESTAMPTZ, nullable: true })
   completedAt: Date | null;
 
+  /** A playlist's modules: `{ watched: { [youtubeId]: percent } }`. Empty for other kinds. */
+  @Column({ name: 'details', type: PG_TYPE.JSONB, default: () => "'{}'::jsonb" })
+  details: { watched?: Record<string, number> };
+
   @Column({ name: 'updated_at', type: PG_TYPE.TIMESTAMPTZ, default: () => SQL_DEFAULT.NOW })
   updatedAt: Date;
 }

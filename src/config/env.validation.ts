@@ -102,6 +102,10 @@ export const envValidationSchema = Joi.object({
   [ENV.ROLEPLAY_MODEL]: Joi.string().max(80).allow('').default(''),
   [ENV.ROLEPLAY_DAILY_LIMIT]: Joi.number().integer().min(0).max(100).default(5),
   [ENV.ROLEPLAY_MAX_TURNS]: Joi.number().integer().min(2).max(60).default(16),
+  [ENV.YOUTUBE_FEED_URL]: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .allow('')
+    .default(''),
 
   // -------------------------------------------------------------------- swagger
   [ENV.SWAGGER_ENABLED]: Joi.boolean().default(true),

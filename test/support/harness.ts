@@ -12,6 +12,7 @@ import { Test } from '@nestjs/testing';
 import { FakeAnthropic } from './fake-anthropic';
 import { FakeGeocoder } from './fake-geocoder';
 import { FakeSupabase } from './fake-supabase';
+import { FakeYoutube } from './fake-youtube';
 
 const JWT_SECRET = 'e2e-supabase-jwt-secret-at-least-32-characters-long';
 const BUCKET = 'sales-tracker-e2e';
@@ -25,6 +26,8 @@ export interface Harness {
   geocoder: FakeGeocoder;
   /** The Claude API, faked: practice pitches never reach the internet. */
   anthropic: FakeAnthropic;
+  /** YouTube's playlist feed, faked. */
+  youtube: FakeYoutube;
   superAdminId: string;
   close(): Promise<void>;
 }
@@ -51,6 +54,7 @@ export const startHarness = async (): Promise<Harness> => {
     '07_visit_place.sql',
     '08_deal_terms.sql',
     '09_training.sql',
+    '10_training_playlists.sql',
   ]) {
     await db.exec(readFileSync(join(__dirname, '../../src/database/sql', file), 'utf8'));
   }
@@ -65,6 +69,8 @@ export const startHarness = async (): Promise<Harness> => {
   await geocoder.start();
   const anthropic = new FakeAnthropic();
   await anthropic.start();
+  const youtube = new FakeYoutube();
+  await youtube.start();
 
   const superAdminId = randomUUID();
   supabase.addUser('owner@pronttera.in', 'super-secret-1', superAdminId);
@@ -103,9 +109,12 @@ export const startHarness = async (): Promise<Harness> => {
     ROLEPLAY_MODEL: 'claude-opus-5-5',
     ROLEPLAY_DAILY_LIMIT: '3',
     ROLEPLAY_MAX_TURNS: '4',
+    // Playlist lessons read their modules from the fake, never from YouTube.
+    YOUTUBE_FEED_URL: youtube.url,
   });
 
   const stopBackends = async (): Promise<void> => {
+    await youtube.stop();
     await anthropic.stop();
     await geocoder.stop();
     await supabase.stop();
@@ -145,6 +154,7 @@ export const startHarness = async (): Promise<Harness> => {
       supabase,
       geocoder,
       anthropic,
+      youtube,
       superAdminId,
       close: async () => {
         await (app as INestApplication).close();

@@ -163,11 +163,15 @@ export enum TrainingKind {
   QUIZ = 'quiz',
   /** Practise a pitch with an AI shop owner. */
   ROLEPLAY = 'roleplay',
+  /** A YouTube playlist: its videos are the modules, played one after another. */
+  PLAYLIST = 'playlist',
 }
 
 /** training_items.step: where a lesson shows for a rep. */
 export enum TrainingStep {
   WATCH = 'watch',
+  /** App tutorial: how the product works, module by module. */
+  TUTORIAL = 'tutorial',
   PRACTISE = 'practise',
   PROVE = 'prove',
   FIELD = 'field',

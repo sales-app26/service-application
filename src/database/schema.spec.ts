@@ -1129,3 +1129,81 @@ describe('09_training.sql', () => {
     );
   });
 });
+
+describe('10_training_playlists.sql', () => {
+  let db: PGlite;
+  const admin = randomUUID();
+  const course = randomUUID();
+
+  const insertLesson = (kind: string, step: string) =>
+    db.query(
+      `INSERT INTO training_items (id, course_id, step, kind, title, created_by)
+       VALUES ($1, $2, $3, $4, 'Frostique app tutorial', $5) RETURNING id`,
+      [randomUUID(), course, step, kind, admin],
+    );
+
+  beforeAll(async () => {
+    db = new PGlite();
+    for (const file of [
+      SQL_FILE.SALES_SCHEMA,
+      SQL_FILE.USER_DELETION,
+      SQL_FILE.SINGLE_USE_CAPTURE,
+      SQL_FILE.SALES_INSIGHTS,
+      SQL_FILE.TEAM_COLLABORATION,
+      SQL_FILE.VISIT_PLACE,
+      SQL_FILE.DEAL_TERMS,
+      SQL_FILE.TRAINING,
+      SQL_FILE.TRAINING_PLAYLISTS,
+    ]) {
+      await db.exec(readSqlFile(file));
+    }
+    await db.exec('SET search_path TO sales');
+    await db.query(
+      `INSERT INTO users (id, name, email, role) VALUES ($1, 'Head', 'head@x.in', 'super_admin')`,
+      [admin],
+    );
+    await db.query(
+      `INSERT INTO training_courses (id, title, created_by) VALUES ($1, 'Frostique core', $2)`,
+      [course, admin],
+    );
+  }, 30_000);
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('can run again', async () => {
+    await expect(db.exec(readSqlFile(SQL_FILE.TRAINING_PLAYLISTS))).resolves.toBeDefined();
+  });
+
+  it('allows playlist lessons and the app tutorial step', async () => {
+    await expect(insertLesson('playlist', 'tutorial')).resolves.toBeDefined();
+    await expect(insertLesson('podcast', 'tutorial')).rejects.toThrow(/training_items_kind_valid/);
+    await expect(insertLesson('video', 'homework')).rejects.toThrow(/training_items_step_valid/);
+  });
+
+  it('keeps per-module progress, empty by default', async () => {
+    const { rows } = await insertLesson('playlist', 'tutorial');
+    const lesson = (rows[0] as { id: string }).id;
+    const saved = await db.query<{ details: unknown }>(
+      `INSERT INTO training_progress (user_id, item_id, percent) VALUES ($1, $2, 0) RETURNING details`,
+      [admin, lesson],
+    );
+    expect(saved.rows[0].details).toEqual({});
+  });
+
+  it('reverts cleanly, moving tutorial lessons back to watch', async () => {
+    await insertLesson('video', 'tutorial');
+    await db.exec(readSqlFile(SQL_FILE.TRAINING_PLAYLISTS_DOWN));
+    const { rows } = await db.query<{ kind: string; step: string }>(
+      `SELECT kind, step FROM training_items`,
+    );
+    expect(rows).toEqual([{ kind: 'video', step: 'watch' }]);
+    await expect(insertLesson('playlist', 'watch')).rejects.toThrow(/training_items_kind_valid/);
+    const cols = await db.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'sales' AND table_name = 'training_progress' AND column_name = 'details'`,
+    );
+    expect(cols.rows).toEqual([]);
+  });
+});

@@ -7,6 +7,7 @@ import { TeamCollaboration1791878400000 } from './1791878400000-TeamCollaboratio
 import { VisitPlace1791964800000 } from './1791964800000-VisitPlace';
 import { DealTerms1792051200000 } from './1792051200000-DealTerms';
 import { Training1792137600000 } from './1792137600000-Training';
+import { TrainingPlaylists1792224000000 } from './1792224000000-TrainingPlaylists';
 
 /** Every migration, in the order they apply. */
 export const MIGRATIONS = [
@@ -19,4 +20,5 @@ export const MIGRATIONS = [
   VisitPlace1791964800000,
   DealTerms1792051200000,
   Training1792137600000,
+  TrainingPlaylists1792224000000,
 ];

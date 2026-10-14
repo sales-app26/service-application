@@ -72,7 +72,9 @@ async function run(): Promise<void> {
 run().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   if (/training_courses" does not exist/.test(message)) {
-    console.error('The training tables aren’t in this database yet. Run `npm run migration:run` first.');
+    console.error(
+      'The training tables aren’t in this database yet. Run `npm run migration:run` first.',
+    );
     process.exit(1);
   }
   console.error(message);

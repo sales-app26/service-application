@@ -60,8 +60,20 @@ export interface RoleplayPayload {
   passScore: number;
 }
 
+/** One video of a playlist: a module of the App tutorial. */
+export interface PlaylistItem {
+  youtubeId: string;
+  title: string;
+}
+
+export interface PlaylistPayload {
+  playlistId: string;
+  /** Read from YouTube when the lesson is saved; empty when YouTube didn't list them. */
+  items: PlaylistItem[];
+}
+
 export type LessonPayload =
-  VideoPayload | DocumentPayload | CardPayload | QuizPayload | RoleplayPayload;
+  VideoPayload | DocumentPayload | CardPayload | QuizPayload | RoleplayPayload | PlaylistPayload;
 
 /** Where a new lesson of each kind shows unless the admin picks another step. */
 export const DEFAULT_STEP: Record<TrainingKind, TrainingStep> = {
@@ -70,6 +82,7 @@ export const DEFAULT_STEP: Record<TrainingKind, TrainingStep> = {
   [TrainingKind.CARD]: TrainingStep.FIELD,
   [TrainingKind.QUIZ]: TrainingStep.PROVE,
   [TrainingKind.ROLEPLAY]: TrainingStep.PRACTISE,
+  [TrainingKind.PLAYLIST]: TrainingStep.TUTORIAL,
 };
 
 const invalid = (message: string): BusinessException =>
@@ -146,6 +159,47 @@ export const parseYoutubeLink = (
   if (!id || !YOUTUBE_ID.test(id)) return null;
   const start = parseTimestamp(url.searchParams.get('t') ?? url.searchParams.get('start'));
   return { youtubeId: id, startSeconds: start };
+};
+
+const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,64}$/u;
+
+/**
+ * The playlist id from a YouTube playlist link (`/playlist?list=…`, or a watch link that
+ * carries `list=`), or a bare id. Null when it isn't one.
+ */
+export const parsePlaylistLink = (input: string): string | null => {
+  const raw = input.trim();
+  if (PLAYLIST_ID.test(raw) && !YOUTUBE_ID.test(raw)) return raw;
+  let url: URL;
+  try {
+    url = new URL(/^https?:\/\//iu.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+  if (!YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) return null;
+  const list = url.searchParams.get('list');
+  return list && PLAYLIST_ID.test(list) ? list : null;
+};
+
+/** What a playlist's RSS feed lists: its title and its videos, in playlist order. */
+export const parsePlaylistFeed = (xml: string): { title: string | null; items: PlaylistItem[] } => {
+  const decode = (s: string) =>
+    s
+      .replace(/&amp;/gu, '&')
+      .replace(/&lt;/gu, '<')
+      .replace(/&gt;/gu, '>')
+      .replace(/&quot;/gu, '"')
+      .replace(/&#39;|&apos;/gu, "'")
+      .trim();
+  const head = xml.split('<entry>')[0];
+  const title = /<title>([^<]*)<\/title>/u.exec(head)?.[1];
+  const items = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gu)]
+    .map((m) => ({
+      youtubeId: /<yt:videoId>([^<]+)<\/yt:videoId>/u.exec(m[1])?.[1] ?? '',
+      title: decode(/<title>([^<]*)<\/title>/u.exec(m[1])?.[1] ?? ''),
+    }))
+    .filter((i) => YOUTUBE_ID.test(i.youtubeId));
+  return { title: title ? decode(title) : null, items };
 };
 
 export const youtubeThumbnail = (youtubeId: string): string =>
@@ -250,6 +304,22 @@ export const normalizePayload = (
       }
       return { passPercent, questions };
     }
+    case TrainingKind.PLAYLIST: {
+      const link = typeof input.url === 'string' ? input.url : input.playlistId;
+      const playlistId = typeof link === 'string' ? parsePlaylistLink(link) : null;
+      if (!playlistId) throw invalid(TRAINING_ERROR.PLAYLIST_LINK);
+      const items = Array.isArray(input.items)
+        ? input.items
+            .filter(isRecord)
+            .map((i) => ({
+              youtubeId: typeof i.youtubeId === 'string' ? i.youtubeId : '',
+              title: text(i.title, BUSINESS_RULE.LESSON_TITLE_MAX_LENGTH) ?? 'Untitled module',
+            }))
+            .filter((i) => YOUTUBE_ID.test(i.youtubeId))
+            .slice(0, BUSINESS_RULE.PLAYLIST_MAX_ITEMS)
+        : [];
+      return { playlistId, items };
+    }
     case TrainingKind.ROLEPLAY: {
       const max = BUSINESS_RULE.ROLEPLAY_TEXT_MAX_LENGTH;
       const persona = isRecord(input.persona) ? input.persona : {};
@@ -338,6 +408,13 @@ export const learnerContent = (
       const p = payload as unknown as QuizPayload;
       return { passPercent: p.passPercent, questions: p.questions.map(askable) };
     }
+    case TrainingKind.PLAYLIST: {
+      const p = payload as unknown as PlaylistPayload;
+      return {
+        playlistId: p.playlistId,
+        items: (p.items ?? []).map((i) => ({ ...i, thumbnailUrl: youtubeThumbnail(i.youtubeId) })),
+      };
+    }
     case TrainingKind.ROLEPLAY: {
       const p = payload as unknown as RoleplayPayload;
       return {
@@ -386,6 +463,20 @@ export const gradeAnswers = (
   const right = results.filter((r) => r.correct).length;
   const score = questions.length === 0 ? 100 : Math.round((right / questions.length) * 100);
   return { score, passed: score >= passPercent, results };
+};
+
+/**
+ * A playlist's progress from its modules: the share watched to the end (90%), and whether
+ * every module is. With no modules listed, the lesson is marked done by the rep.
+ */
+export const playlistProgress = (
+  items: PlaylistItem[],
+  watched: Record<string, number>,
+  donePercent: number,
+): { percent: number; complete: boolean } => {
+  if (items.length === 0) return { percent: 0, complete: false };
+  const done = items.filter((i) => (watched[i.youtubeId] ?? 0) >= donePercent).length;
+  return { percent: Math.round((done / items.length) * 100), complete: done === items.length };
 };
 
 /** The share of required lessons done, 0–100. */

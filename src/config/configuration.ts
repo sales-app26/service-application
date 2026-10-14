@@ -249,6 +249,8 @@ export interface TrainingConfig {
   roleplayDailyLimit: number;
   /** Messages a rep may send in one pitch before it must be finished. */
   roleplayMaxTurns: number;
+  /** YouTube's public playlist feed, read when a playlist lesson is saved. The e2e suite fakes it. */
+  youtubeFeedUrl: string;
 }
 
 export const trainingConfig = registerAs(CONFIG_NAMESPACE.TRAINING, (): TrainingConfig => ({
@@ -257,6 +259,9 @@ export const trainingConfig = registerAs(CONFIG_NAMESPACE.TRAINING, (): Training
   roleplayModel: (process.env[ENV.ROLEPLAY_MODEL] ?? '').trim() || 'claude-opus-5-5',
   roleplayDailyLimit: toNumber(process.env[ENV.ROLEPLAY_DAILY_LIMIT], 5),
   roleplayMaxTurns: toNumber(process.env[ENV.ROLEPLAY_MAX_TURNS], 16),
+  youtubeFeedUrl: withoutTrailingSlash(
+    (process.env[ENV.YOUTUBE_FEED_URL] ?? '').trim() || 'https://www.youtube.com/feeds/videos.xml',
+  ),
 }));
 
 // ---------------------------------------------------------------------------
