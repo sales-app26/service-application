@@ -31,6 +31,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { SupabaseModule } from './modules/supabase/supabase.module';
 import { TeamModule } from './modules/team/team.module';
 import { TemplatesModule } from './modules/templates/templates.module';
+import { TrainingModule } from './modules/training/training.module';
 import { TransferRejectionsModule } from './modules/transfers/transfer-rejections.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
 import { UsersModule } from './modules/users/users.module';
@@ -98,6 +99,7 @@ const MILLISECONDS_PER_SECOND = 1_000;
     TeamModule,
     TemplatesModule,
     PricingModule,
+    TrainingModule,
   ],
   providers: [
     {

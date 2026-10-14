@@ -13,6 +13,7 @@ npm install
 cp .env.example .env          # fill in the Supabase keys and CAPTURE_TOKEN_SECRET
 npm run migration:run         # creates schema `sales` and the 7 tables
 npm run db:seed               # first Super Admin, from SEED_SUPER_ADMIN_* in .env
+npm run db:seed:training      # the starting Frostique sales course, as a draft (optional)
 npm run start:dev             # http://localhost:4100/api/v1, docs at /docs
 ```
 
@@ -71,5 +72,6 @@ npm run test:e2e  # boots the API against PGlite and a fake Supabase
 | Entries | `POST leads/:id/follow-ups`, `POST leads/:id/status`, `GET/PATCH/DELETE entries/:id`, `GET entries/:id/photo` |
 | Visits | `POST visits/capture-token` |
 | Transfers | `POST leads/:id/transfers · reassign`, `POST projects/:id/leads/reassign`, `GET transfers`, `GET transfers/pending-count`, `POST transfers/:id/approve · reject` |
+| Training | `GET/POST training/courses`, `GET/PATCH/DELETE training/courses/:id`, `POST training/courses/:id/items`, `GET/PATCH/DELETE training/items/:id`, `POST training/items/:id/file · progress · attempts · roleplay`, `GET training/items/:id/file · roleplay`, `GET/PUT projects/:id/training/courses`, `GET/POST projects/:id/training/items`, `GET projects/:id/training · training/board`, `GET roleplay/:id`, `POST roleplay/:id/turns · finish` |
 | Reports | `GET me/home`, `GET me/agenda`, `GET me/due-today`, `GET timeline`, `GET timeline/summary`, `GET dashboard`, `GET exports/leads · follow-ups` |
 # service-application

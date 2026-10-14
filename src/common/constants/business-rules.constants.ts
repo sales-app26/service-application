@@ -119,6 +119,39 @@ export const BUSINESS_RULE = {
   TEMPLATE_SORT_MAX: 10_000,
   /** Ids one "mark as read" may name; `all` covers the rest. */
   NOTIFICATIONS_READ_MAX_IDS: 100,
+  COURSE_TITLE_MAX_LENGTH: 120,
+  LESSON_TITLE_MAX_LENGTH: 120,
+  LESSON_SUMMARY_MAX_LENGTH: 500,
+  LESSON_MINUTES_MAX: 240,
+  LESSON_SORT_MAX: 10_000,
+  /** A field card or a document's note: Markdown. */
+  LESSON_MARKDOWN_MAX_LENGTH: 20_000,
+  /** PDFs and images uploaded for a lesson; Supabase's default object limit is 50 MB. */
+  LESSON_FILE_MAX_BYTES: 20 * 1024 * 1024,
+  LESSON_FILE_NAME_MAX_LENGTH: 120,
+  LESSON_LINK_MAX_LENGTH: 500,
+  /** Quiz and after-video checks. */
+  QUIZ_MAX_QUESTIONS: 60,
+  QUIZ_MIN_OPTIONS: 2,
+  QUIZ_MAX_OPTIONS: 6,
+  QUIZ_QUESTION_MAX_LENGTH: 400,
+  QUIZ_OPTION_MAX_LENGTH: 200,
+  QUIZ_EXPLANATION_MAX_LENGTH: 600,
+  QUIZ_DEFAULT_PASS_PERCENT: 80,
+  VIDEO_MAX_CHECKS: 5,
+  /** A video counts as watched at this share. */
+  VIDEO_DONE_PERCENT: 90,
+  /** Quiz tries per person per lesson per India day. */
+  QUIZ_ATTEMPTS_PER_DAY: 3,
+  /** Role-play: the scenario an admin writes. */
+  ROLEPLAY_TEXT_MAX_LENGTH: 4_000,
+  ROLEPLAY_RUBRIC_MAX: 12,
+  ROLEPLAY_RUBRIC_ITEM_MAX_LENGTH: 200,
+  ROLEPLAY_DEFAULT_PASS_SCORE: 70,
+  /** One message the rep types or speaks. */
+  ROLEPLAY_MESSAGE_MAX_LENGTH: 800,
+  /** Courses one campaign can use. */
+  CAMPAIGN_COURSES_MAX: 20,
 } as const;
 
 /** Statuses after which no next follow-up date is asked, and any is cleared (PRD §4). */
@@ -151,6 +184,7 @@ export const UNSPECIFIED = 'unspecified';
 export const STORAGE_FOLDER = {
   VISITS: 'visits',
   PROJECTS: 'projects',
+  TRAINING: 'training',
 } as const;
 
 /**

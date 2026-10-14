@@ -23,6 +23,12 @@ export const TABLE = {
   MESSAGE_TEMPLATES: 'message_templates',
   PLAN_PRICES: 'plan_prices',
   OFFERS: 'offers',
+  TRAINING_COURSES: 'training_courses',
+  TRAINING_ITEMS: 'training_items',
+  PROJECT_COURSES: 'project_courses',
+  TRAINING_PROGRESS: 'training_progress',
+  ROLEPLAY_SESSIONS: 'roleplay_sessions',
+  TRAINING_CERTIFICATIONS: 'training_certifications',
 } as const;
 
 /**
@@ -42,6 +48,7 @@ export const PG_TYPE = {
   INTEGER: 'integer',
   SMALLINT: 'smallint',
   NUMERIC: 'numeric',
+  JSONB: 'jsonb',
   DATE: 'date',
   TIMESTAMPTZ: 'timestamptz',
 } as const;

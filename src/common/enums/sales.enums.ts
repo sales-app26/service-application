@@ -149,6 +149,29 @@ export enum NotificationKind {
   COMMENT = 'comment',
   FEEDBACK = 'feedback',
   LEAVE_COVER = 'leave_cover',
+  TRAINING = 'training',
+}
+
+/** training_items.kind */
+export enum TrainingKind {
+  /** A YouTube video, with optional checks after it. */
+  VIDEO = 'video',
+  /** A PDF or image in our storage, or a link. */
+  DOCUMENT = 'document',
+  /** Short Markdown text: the field kit. */
+  CARD = 'card',
+  QUIZ = 'quiz',
+  /** Practise a pitch with an AI shop owner. */
+  ROLEPLAY = 'roleplay',
+}
+
+/** training_items.step: where a lesson shows for a rep. */
+export enum TrainingStep {
+  WATCH = 'watch',
+  PRACTISE = 'practise',
+  PROVE = 'prove',
+  FIELD = 'field',
+  LIBRARY = 'library',
 }
 
 /** The project leaderboard's window: this Monday–Sunday week or calendar month, IST. */

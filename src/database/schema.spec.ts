@@ -984,3 +984,148 @@ describe('08_deal_terms.sql', () => {
     expect(kept).toEqual([{ deal_value: 1499, plan: 'Annual Gold' }]);
   });
 });
+
+describe('09_training.sql', () => {
+  let db: PGlite;
+  const admin = randomUUID();
+  const project = randomUUID();
+  const course = randomUUID();
+
+  const rejects = (promise: Promise<unknown>, pattern: RegExp) =>
+    expect(promise).rejects.toThrow(pattern);
+
+  const insertLesson = (fields: Record<string, unknown>) => {
+    const row = {
+      course_id: course,
+      project_id: null,
+      step: 'watch',
+      kind: 'video',
+      title: 'The 25-minute visit',
+      file_path: null,
+      minutes: null,
+      ...fields,
+    };
+    return db.query(
+      `INSERT INTO training_items (id, course_id, project_id, step, kind, title, file_path, minutes, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [
+        randomUUID(),
+        row.course_id,
+        row.project_id,
+        row.step,
+        row.kind,
+        row.title,
+        row.file_path,
+        row.minutes,
+        admin,
+      ],
+    );
+  };
+
+  beforeAll(async () => {
+    db = new PGlite();
+    for (const file of [
+      SQL_FILE.SALES_SCHEMA,
+      SQL_FILE.USER_DELETION,
+      SQL_FILE.SINGLE_USE_CAPTURE,
+      SQL_FILE.SALES_INSIGHTS,
+      SQL_FILE.TEAM_COLLABORATION,
+      SQL_FILE.VISIT_PLACE,
+      SQL_FILE.DEAL_TERMS,
+      SQL_FILE.TRAINING,
+    ]) {
+      await db.exec(readSqlFile(file));
+    }
+    await db.exec('SET search_path TO sales');
+    await db.query(
+      `INSERT INTO users (id, name, email, role) VALUES ($1, 'Head', 'head@x.in', 'super_admin')`,
+      [admin],
+    );
+    await db.query(
+      `INSERT INTO projects (id, name, type, start_date, created_by) VALUES ($1, 'Pune', 'online', '2026-10-01', $2)`,
+      [project, admin],
+    );
+    await db.query(
+      `INSERT INTO training_courses (id, title, created_by) VALUES ($1, 'Frostique core', $2)`,
+      [course, admin],
+    );
+  }, 30_000);
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('can run again', async () => {
+    await expect(db.exec(readSqlFile(SQL_FILE.TRAINING))).resolves.toBeDefined();
+  });
+
+  it('a lesson belongs to a course or to one campaign, never both or neither', async () => {
+    await expect(insertLesson({})).resolves.toBeDefined();
+    await expect(insertLesson({ course_id: null, project_id: project })).resolves.toBeDefined();
+    await rejects(insertLesson({ project_id: project }), /training_items_one_owner/);
+    await rejects(insertLesson({ course_id: null }), /training_items_one_owner/);
+  });
+
+  it('checks kind, step, title, minutes and that only documents carry a file', async () => {
+    await rejects(insertLesson({ kind: 'podcast' }), /training_items_kind_valid/);
+    await rejects(insertLesson({ step: 'homework' }), /training_items_step_valid/);
+    await rejects(insertLesson({ title: '  ' }), /training_items_title_length/);
+    await rejects(insertLesson({ minutes: 0 }), /training_items_minutes_range/);
+    await rejects(
+      insertLesson({ file_path: 'training/x.pdf' }),
+      /training_items_file_only_documents/,
+    );
+    await expect(
+      insertLesson({ kind: 'document', step: 'library', file_path: 'training/x.pdf' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('keeps scores and progress in range, and a score only on a finished pitch', async () => {
+    const { rows } = await insertLesson({ kind: 'roleplay', step: 'practise' });
+    const lesson = (rows[0] as { id: string }).id;
+    await rejects(
+      db.query(`INSERT INTO training_progress (user_id, item_id, percent) VALUES ($1, $2, 101)`, [
+        admin,
+        lesson,
+      ]),
+      /training_progress_percent_range/,
+    );
+    await rejects(
+      db.query(
+        `INSERT INTO roleplay_sessions (user_id, item_id, project_id, score) VALUES ($1, $2, $3, 80)`,
+        [admin, lesson, project],
+      ),
+      /roleplay_sessions_scored_when_finished/,
+    );
+    await expect(
+      db.query(
+        `INSERT INTO roleplay_sessions (user_id, item_id, project_id, score, finished_at) VALUES ($1, $2, $3, 80, now())`,
+        [admin, lesson, project],
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('allows training notifications', async () => {
+    await expect(
+      db.query(
+        `INSERT INTO notifications (user_id, kind, title) VALUES ($1, 'training', 'Ravi finished training')`,
+        [admin],
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('reverts cleanly', async () => {
+    await db.exec(readSqlFile(SQL_FILE.TRAINING_DOWN));
+    const { rows } = await db.query(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'sales' AND table_name LIKE 'training%'`,
+    );
+    expect(rows).toEqual([]);
+    await rejects(
+      db.query(`INSERT INTO notifications (user_id, kind, title) VALUES ($1, 'training', 'x')`, [
+        admin,
+      ]),
+      /notifications_kind_valid/,
+    );
+  });
+});

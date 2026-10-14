@@ -1,7 +1,7 @@
 {
   "name": "sales-tracker-service-application",
   "version": "0.1.0",
-  "description": "Sales Tracker API \u2014 leads, follow-ups, door-to-door visit proof and conversion targets on PostgreSQL/Supabase",
+  "description": "Sales Tracker API — leads, follow-ups, door-to-door visit proof and conversion targets on PostgreSQL/Supabase",
   "author": "Pronttera",
   "private": true,
   "license": "UNLICENSED",
@@ -33,10 +33,13 @@
     "db:seed:demo": "ts-node -r tsconfig-paths/register src/database/seeds/run-demo-seed.ts",
     "db:seed:demo:reset": "ts-node -r tsconfig-paths/register src/database/seeds/run-demo-seed.ts --reset",
     "db:seed:prod": "ENV_FILE=.env.prod NODE_ENV=production npm run db:seed",
+    "db:seed:training": "ts-node -r tsconfig-paths/register src/database/seeds/run-training-seed.ts",
+    "db:seed:training:prod": "ENV_FILE=.env.prod NODE_ENV=production npm run db:seed:training",
     "db:setup": "npm run migration:run && npm run db:seed",
     "dev:fake": "ts-node -r tsconfig-paths/register test/support/dev-server.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",

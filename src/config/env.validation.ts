@@ -93,6 +93,16 @@ export const envValidationSchema = Joi.object({
     .default(''),
   [ENV.GEOCODER_TIMEOUT_MS]: Joi.number().integer().min(500).max(15_000).default(4_000),
 
+  // ------------------------------------------------------------------- training
+  [ENV.ANTHROPIC_API_KEY]: Joi.string().allow('').default(''),
+  [ENV.ANTHROPIC_BASE_URL]: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .allow('')
+    .default(''),
+  [ENV.ROLEPLAY_MODEL]: Joi.string().max(80).allow('').default(''),
+  [ENV.ROLEPLAY_DAILY_LIMIT]: Joi.number().integer().min(0).max(100).default(5),
+  [ENV.ROLEPLAY_MAX_TURNS]: Joi.number().integer().min(2).max(60).default(16),
+
   // -------------------------------------------------------------------- swagger
   [ENV.SWAGGER_ENABLED]: Joi.boolean().default(true),
   [ENV.SWAGGER_PATH]: Joi.string().default('docs'),

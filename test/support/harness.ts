@@ -9,6 +9,7 @@ import { ConsoleLogger, INestApplication } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 
+import { FakeAnthropic } from './fake-anthropic';
 import { FakeGeocoder } from './fake-geocoder';
 import { FakeSupabase } from './fake-supabase';
 
@@ -22,6 +23,8 @@ export interface Harness {
   supabase: FakeSupabase;
   /** OpenStreetMap's place lookups, faked: no test reaches the internet. */
   geocoder: FakeGeocoder;
+  /** The Claude API, faked: practice pitches never reach the internet. */
+  anthropic: FakeAnthropic;
   superAdminId: string;
   close(): Promise<void>;
 }
@@ -47,6 +50,7 @@ export const startHarness = async (): Promise<Harness> => {
     '06_team_collaboration.sql',
     '07_visit_place.sql',
     '08_deal_terms.sql',
+    '09_training.sql',
   ]) {
     await db.exec(readFileSync(join(__dirname, '../../src/database/sql', file), 'utf8'));
   }
@@ -59,6 +63,8 @@ export const startHarness = async (): Promise<Harness> => {
   await supabase.start();
   const geocoder = new FakeGeocoder();
   await geocoder.start();
+  const anthropic = new FakeAnthropic();
+  await anthropic.start();
 
   const superAdminId = randomUUID();
   supabase.addUser('owner@pronttera.in', 'super-secret-1', superAdminId);
@@ -91,9 +97,16 @@ export const startHarness = async (): Promise<Harness> => {
     GEOCODER_PHOTON_URL: geocoder.photonUrl,
     GEOCODER_CONTACT: 'e2e@example.com',
     GEOCODER_TIMEOUT_MS: '1500',
+    // Practice pitches go to the fake, never to the Claude API, whatever .env holds.
+    ANTHROPIC_API_KEY: 'e2e-anthropic-key',
+    ANTHROPIC_BASE_URL: anthropic.url,
+    ROLEPLAY_MODEL: 'claude-opus-5-5',
+    ROLEPLAY_DAILY_LIMIT: '3',
+    ROLEPLAY_MAX_TURNS: '4',
   });
 
   const stopBackends = async (): Promise<void> => {
+    await anthropic.stop();
     await geocoder.stop();
     await supabase.stop();
     await pgServer.stop();
@@ -131,6 +144,7 @@ export const startHarness = async (): Promise<Harness> => {
       db,
       supabase,
       geocoder,
+      anthropic,
       superAdminId,
       close: async () => {
         await (app as INestApplication).close();

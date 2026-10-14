@@ -304,6 +304,47 @@ export const REPORT_ERROR = {
 } as const;
 
 /** Release notes are written by the sales head, who works with .md files here. */
+export const TRAINING_ERROR = {
+  COURSE_NOT_FOUND: 'We couldn’t find this course.',
+  LESSON_NOT_FOUND: 'We couldn’t find this lesson.',
+  NOTHING_TO_UPDATE: 'Change something, then save.',
+  COURSE_UNPUBLISHED: (title: string) =>
+    `“${title}” is still a draft. Publish it in the training library first.`,
+  TOO_MANY_COURSES: 'A campaign can use at most 20 courses.',
+  NOT_IN_CAMPAIGN: 'This lesson isn’t part of this campaign’s training.',
+  WRONG_KIND: 'This lesson doesn’t work that way.',
+  YOUTUBE_LINK:
+    'Paste a YouTube link, like https://youtu.be/… or https://www.youtube.com/watch?v=…',
+  VIDEO_TIMES: 'The end time must be after the start time.',
+  DOCUMENT_SOURCE: 'Upload a PDF or image, or paste a link to the document.',
+  LINK_FORMAT: 'The link must start with https://',
+  FILE_REQUIRED: 'Choose the PDF or image to upload.',
+  FILE_TYPE: 'Upload a PDF, JPG or PNG.',
+  FILE_TOO_LARGE: 'The file is larger than 20 MB.',
+  NO_FILE: 'This lesson has no file yet.',
+  MARKDOWN_REQUIRED: 'Write the card’s text.',
+  QUESTIONS_REQUIRED: 'Add at least one question.',
+  TOO_MANY_QUESTIONS: (max: number) => `A quiz can have at most ${max} questions.`,
+  QUESTION_SHAPE: (n: number) =>
+    `Question ${n} needs its text, 2 to 6 answers and the right answer picked.`,
+  PASS_PERCENT: 'The pass mark must be between 1 and 100%.',
+  ANSWERS_COUNT: 'Answer every question, then submit.',
+  ATTEMPTS_TODAY: (max: number) =>
+    `You’ve used today’s ${max} tries for this quiz. Read the explanations and try again tomorrow.`,
+  ROLEPLAY_SHAPE:
+    'Give the owner a name and shop, what the rep should know, and how the owner behaves.',
+  ROLEPLAY_RUBRIC: 'Add 1 to 12 things the coach scores the pitch on.',
+  ROLEPLAY_OFF: 'Practice with an AI owner isn’t switched on yet. Ask your sales head.',
+  ROLEPLAY_DAILY_LIMIT: (max: number) =>
+    `You’ve done today’s ${max} practice pitches. Come back tomorrow for more.`,
+  ROLEPLAY_NOT_FOUND: 'We couldn’t find this practice pitch.',
+  ROLEPLAY_FINISHED: 'This practice pitch is finished. Start a new one to try again.',
+  ROLEPLAY_TOO_LONG: (max: number) =>
+    `This pitch has reached ${max} messages. Finish it to get your score.`,
+  ROLEPLAY_EMPTY: 'Say something to the owner first.',
+  ROLEPLAY_UNAVAILABLE: 'The practice owner couldn’t answer just now. Please try again.',
+} as const;
+
 export const VERSION_ERROR = {
   NOT_FOUND: 'That version no longer exists.',
   EXISTS: (version: string) => `Version ${version} already exists.`,

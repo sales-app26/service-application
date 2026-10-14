@@ -23,6 +23,10 @@ export const ROUTE = {
   SETTINGS: 'settings',
   PLAN_PRICES: 'plan-prices',
   OFFERS: 'offers',
+  TRAINING: 'training',
+  COURSES: 'courses',
+  ITEMS: 'items',
+  ROLEPLAY: 'roleplay',
   ID_PARAM: ':id',
 } as const;
 
@@ -75,6 +79,7 @@ export const MIME_TYPE = {
   PNG: 'image/png',
   WEBP: 'image/webp',
   CSV: 'text/csv; charset=utf-8',
+  PDF: 'application/pdf',
 } as const;
 
 /**
@@ -127,6 +132,11 @@ export const SUCCESS_MESSAGE = {
   PLAN_PRICES_SAVED: 'Plan prices saved.',
   OFFER_SAVED: 'Offer saved.',
   OFFER_REMOVED: 'Offer removed.',
+  COURSE_SAVED: 'Course saved.',
+  LESSON_SAVED: 'Lesson saved.',
+  LESSON_FILE_SAVED: 'File uploaded.',
+  CAMPAIGN_COURSES_SAVED: 'Campaign training updated.',
+  LESSON_DONE: 'Lesson done.',
   NOTHING_LOGGED: 'No activity on this day.',
   NO_DATA: 'No sales activity for these dates.',
   NO_PROJECTS: 'You’re not on any campaign yet. Your sales manager will add you.',
@@ -151,6 +161,7 @@ export const NOTIFICATION_LINK = {
   LEADS: '/leads',
   LEAD: (leadId: string) => `/leads/${leadId}`,
   DAY: (date: string) => `/day?date=${date}`,
+  TRAINING_PROGRESS: (projectId: string) => `/projects/${projectId}?tab=training`,
 } as const;
 
 /** The title and body lines of each in-app notification. */
@@ -174,4 +185,5 @@ export const NOTIFICATION_TEXT = {
   LEAD_ASSIGNED_TITLE: (actor: string, lead: string) => `${actor} assigned ${lead} to you`,
   LEADS_ASSIGNED_TITLE: (actor: string, count: number, project: string) =>
     `${actor} assigned ${count} leads in ${project} to you`,
+  CERTIFIED_TITLE: (name: string, project: string) => `${name} finished training for ${project}`,
 } as const;

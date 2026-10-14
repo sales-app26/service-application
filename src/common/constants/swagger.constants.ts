@@ -25,6 +25,7 @@ export const SWAGGER_TAG = {
   TEMPLATES: 'Message templates',
   GEO: 'Places',
   PRICING: 'Plans & offers',
+  TRAINING: 'Training',
 } as const;
 
 export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
@@ -52,6 +53,8 @@ export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
   [SWAGGER_TAG.TEMPLATES]: 'Canned messages for a project, with {client}, {rep} and {business}.',
   [SWAGGER_TAG.PRICING]:
     'Plan prices and company-wide offers. Everyone reads them; only the sales head changes them.',
+  [SWAGGER_TAG.TRAINING]:
+    'Courses in the training library, each campaign’s lessons, progress and certificates, quizzes and practice pitches with an AI shop owner.',
   [SWAGGER_TAG.GEO]:
     'The area a position is in, from OpenStreetMap (Nominatim, Photon as a fallback). Free, cached, at most one upstream request a second.',
 };

@@ -235,6 +235,31 @@ export const geoConfig = registerAs(CONFIG_NAMESPACE.GEO, (): GeoConfig => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Training: practice pitches with an AI shop owner (Claude)
+// ---------------------------------------------------------------------------
+
+export interface TrainingConfig {
+  /** Empty turns practice pitches off; everything else in training still works. */
+  anthropicApiKey: string;
+  /** Empty: the SDK's default (api.anthropic.com). The e2e suite points it at a fake. */
+  anthropicBaseUrl: string;
+  /** The model that plays the shop owner and scores the pitch. */
+  roleplayModel: string;
+  /** Practice pitches one person may start per India day. */
+  roleplayDailyLimit: number;
+  /** Messages a rep may send in one pitch before it must be finished. */
+  roleplayMaxTurns: number;
+}
+
+export const trainingConfig = registerAs(CONFIG_NAMESPACE.TRAINING, (): TrainingConfig => ({
+  anthropicApiKey: (process.env[ENV.ANTHROPIC_API_KEY] ?? '').trim(),
+  anthropicBaseUrl: withoutTrailingSlash((process.env[ENV.ANTHROPIC_BASE_URL] ?? '').trim()),
+  roleplayModel: (process.env[ENV.ROLEPLAY_MODEL] ?? '').trim() || 'claude-opus-5-5',
+  roleplayDailyLimit: toNumber(process.env[ENV.ROLEPLAY_DAILY_LIMIT], 5),
+  roleplayMaxTurns: toNumber(process.env[ENV.ROLEPLAY_MAX_TURNS], 16),
+}));
+
+// ---------------------------------------------------------------------------
 // Swagger
 // ---------------------------------------------------------------------------
 
@@ -261,4 +286,5 @@ export const configurations = [
   swaggerConfig,
   mailConfig,
   geoConfig,
+  trainingConfig,
 ];

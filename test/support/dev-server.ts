@@ -8,6 +8,7 @@
  *
  * Prints one `READY {json}` line with the base URL and the logins, then runs until stopped.
  */
+import { FROSTIQUE_COURSE, FROSTIQUE_LESSONS } from '../../src/database/seeds/training-content';
 import { startHarness } from './harness';
 
 const PASSWORD = 'test-password-1';
@@ -70,6 +71,44 @@ async function main(): Promise<void> {
       });
   }
 
+  // Training: the starting Frostique course, published and used by both campaigns, plus
+  // one video (any public YouTube id works for a demo) and a campaign-only briefing.
+  const course = await call<{ id: string }>('POST', '/training/courses', token, {
+    ...FROSTIQUE_COURSE,
+    published: true,
+  });
+  await call('POST', `/training/courses/${course.id}/items`, token, {
+    kind: 'video',
+    title: 'Frostique in 90 seconds',
+    minutes: 2,
+    sort: 0,
+    payload: {
+      url: 'https://youtu.be/aqz-KE-bpKQ',
+      checks: [
+        {
+          text: 'What does Frostique take as commission on a shop’s orders?',
+          options: ['Nothing', '5%', '25%'],
+          answer: 0,
+          explanation: 'No commission. Online payments carry only the payment gateway’s fee.',
+        },
+      ],
+    },
+  });
+  for (const [index, lesson] of FROSTIQUE_LESSONS.entries()) {
+    await call('POST', `/training/courses/${course.id}/items`, token, {
+      ...lesson,
+      sort: (index + 1) * 10,
+    });
+  }
+  for (const p of [online, d2d]) {
+    await call('PUT', `/projects/${p.id}/training/courses`, token, { courseIds: [course.id] });
+  }
+  await call('POST', `/projects/${online.id}/training/items`, token, {
+    kind: 'card',
+    title: 'Pune: what to know',
+    payload: { markdown: 'Most bakeries here close 2–4 PM. Visit before 1 PM or after 4 PM.' },
+  });
+
   const info = {
     baseUrl: h.baseUrl,
     superAdmin: {
@@ -82,6 +121,7 @@ async function main(): Promise<void> {
     sales: ravi,
     others: { priya, karan },
     projects: { online: online.id, doorToDoor: d2d.id },
+    trainingCourse: course.id,
   };
   console.log(`READY ${JSON.stringify(info)}`);
 
