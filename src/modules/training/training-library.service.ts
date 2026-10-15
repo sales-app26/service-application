@@ -32,7 +32,13 @@ import {
   UpdateCourseDto,
   UpdateLessonDto,
 } from './dto/training.dto';
-import { DEFAULT_STEP, normalizePayload, PlaylistPayload } from './training-rules';
+import {
+  DEFAULT_STEP,
+  mergePlaylistOrder,
+  normalizePayload,
+  PlaylistItem,
+  PlaylistPayload,
+} from './training-rules';
 import { YoutubePlaylistClient } from './youtube-playlist.client';
 
 /** A file as multer hands it over. */
@@ -337,8 +343,8 @@ export class TrainingLibraryService {
 
   /**
    * A playlist lesson's modules, read from YouTube when its link is new or the admin asks to
-   * refresh (`refresh: true`); otherwise the titles the admin kept or edited. Other kinds pass
-   * through unchanged.
+   * refresh (`refresh: true`); otherwise the order and titles the admin set. A refresh keeps the
+   * admin's order and adds new videos at the end. Other kinds pass through unchanged.
    */
   private async withModules<T>(
     kind: TrainingKind,
@@ -352,7 +358,10 @@ export class TrainingLibraryService {
     const samePlaylist = before?.playlistId === next.playlistId;
     if (next.items.length > 0 && samePlaylist && raw.refresh !== true) return payload;
     const listed = await this.playlists.list(next.playlistId);
-    const items = listed?.items ?? (samePlaylist ? (before?.items ?? []) : []);
+    const arranged = next.items.length > 0 ? next.items : (before?.items ?? []);
+    let items: PlaylistItem[] = [];
+    if (listed) items = samePlaylist ? mergePlaylistOrder(arranged, listed.items) : listed.items;
+    else if (samePlaylist) items = arranged;
     return { ...next, items: items.slice(0, BUSINESS_RULE.PLAYLIST_MAX_ITEMS) } as unknown as T;
   }
 

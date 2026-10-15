@@ -469,6 +469,21 @@ export const gradeAnswers = (
  * A playlist's progress from its modules: the share watched to the end (90%), and whether
  * every module is. With no modules listed, the lesson is marked done by the rep.
  */
+/**
+ * A playlist read again from YouTube, in the order the admin arranged: modules still in the
+ * playlist keep their place (with YouTube's current title), new videos join at the end in
+ * YouTube's order, and videos taken off the playlist drop out.
+ */
+export const mergePlaylistOrder = (
+  arranged: PlaylistItem[],
+  listed: PlaylistItem[],
+): PlaylistItem[] => {
+  const fresh = new Map(listed.map((i) => [i.youtubeId, i]));
+  const kept = arranged.flatMap((i) => fresh.get(i.youtubeId) ?? []);
+  const known = new Set(kept.map((i) => i.youtubeId));
+  return [...kept, ...listed.filter((i) => !known.has(i.youtubeId))];
+};
+
 export const playlistProgress = (
   items: PlaylistItem[],
   watched: Record<string, number>,

@@ -616,6 +616,37 @@ describe('Training (e2e)', () => {
       });
     });
 
+    it('the admin rearranges the modules, and a refresh keeps that order', async () => {
+      const reversed = [...modules].reverse().map((m) => ({ youtubeId: m.id, title: m.title }));
+      const res = await meera.patch(`/training/items/${tutorial}`, {
+        payload: { playlistId: PLAYLIST, items: reversed },
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data.payload.items.map((i: any) => i.youtubeId)).toEqual(
+        reversed.map((m) => m.youtubeId),
+      );
+
+      harness.youtube.playlists.set(PLAYLIST, [
+        ...modules,
+        { id: 'module4xxxx', title: '4 · New' },
+      ]);
+      const refreshed = await meera.patch(`/training/items/${tutorial}`, {
+        payload: { playlistId: PLAYLIST, refresh: true },
+      });
+      expect(refreshed.body.data.payload.items.map((i: any) => i.youtubeId)).toEqual([
+        ...reversed.map((m) => m.youtubeId),
+        'module4xxxx',
+      ]);
+      // put it back the way the rest of these tests expect
+      harness.youtube.playlists.set(PLAYLIST, modules);
+      await meera.patch(`/training/items/${tutorial}`, {
+        payload: {
+          playlistId: PLAYLIST,
+          items: modules.map((m) => ({ youtubeId: m.id, title: m.title })),
+        },
+      });
+    });
+
     it('reps see the modules with thumbnails', async () => {
       const mine = lessonOf(await syllabus(priya), tutorial);
       expect(mine).toMatchObject({ kind: 'playlist', step: 'tutorial' });

@@ -3,6 +3,7 @@ import {
   completionPercent,
   gradeAnswers,
   learnerContent,
+  mergePlaylistOrder,
   normalizePayload,
   parsePlaylistFeed,
   parsePlaylistLink,
@@ -267,5 +268,21 @@ describe('playlists', () => {
     expect(() =>
       normalizePayload(TrainingKind.PLAYLIST, { url: 'https://youtu.be/dQw4w9WgXcQ' }),
     ).toThrow('playlist link');
+  });
+
+  it('a refresh keeps the admin’s order, adds new videos last and drops removed ones', () => {
+    const m = (id: string, title = id) => ({ youtubeId: id.padEnd(11, 'x'), title });
+    const arranged = [m('c', 'Mine C'), m('a', 'Mine A'), m('b', 'Mine B')];
+    const listed = [m('a', 'YT A'), m('b', 'YT B'), m('d', 'YT D')];
+    expect(mergePlaylistOrder(arranged, listed)).toEqual([
+      m('a', 'YT A'),
+      m('b', 'YT B'),
+      m('d', 'YT D'),
+    ]);
+    expect(mergePlaylistOrder([m('b'), m('a')], listed)).toEqual([
+      m('b', 'YT B'),
+      m('a', 'YT A'),
+      m('d', 'YT D'),
+    ]);
   });
 });
