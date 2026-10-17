@@ -251,6 +251,13 @@ export interface TrainingConfig {
   roleplayMaxTurns: number;
   /** YouTube's public playlist feed, read when a playlist lesson is saved. The e2e suite fakes it. */
   youtubeFeedUrl: string;
+  /**
+   * A YouTube Data API key. With it a playlist lesson lists every video (up to the module cap);
+   * empty: only the feed, which YouTube caps at a playlist's first 15 videos.
+   */
+  youtubeApiKey: string;
+  /** The Data API's base URL. The e2e suite fakes it. */
+  youtubeApiUrl: string;
 }
 
 export const trainingConfig = registerAs(CONFIG_NAMESPACE.TRAINING, (): TrainingConfig => ({
@@ -261,6 +268,10 @@ export const trainingConfig = registerAs(CONFIG_NAMESPACE.TRAINING, (): Training
   roleplayMaxTurns: toNumber(process.env[ENV.ROLEPLAY_MAX_TURNS], 16),
   youtubeFeedUrl: withoutTrailingSlash(
     (process.env[ENV.YOUTUBE_FEED_URL] ?? '').trim() || 'https://www.youtube.com/feeds/videos.xml',
+  ),
+  youtubeApiKey: (process.env[ENV.YOUTUBE_API_KEY] ?? '').trim(),
+  youtubeApiUrl: withoutTrailingSlash(
+    (process.env[ENV.YOUTUBE_API_URL] ?? '').trim() || 'https://www.googleapis.com/youtube/v3',
   ),
 }));
 

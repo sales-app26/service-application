@@ -696,5 +696,46 @@ describe('Training (e2e)', () => {
       });
       expect(done.body.data.progress).toMatchObject({ percent: 100 });
     });
+
+    describe('a playlist longer than the feed’s 15 videos', () => {
+      const LONG = 'PLfrostiquePortalAcademy';
+      const episodes = Array.from({ length: 31 }, (_, i) => ({
+        id: `episode${String(i).padStart(2, '0')}xx`,
+        title: `${String(i).padStart(2, '0')} · Episode ${i}`,
+      }));
+      const save = (title: string) =>
+        meera.post(`/projects/${projectId}/training/items`, {
+          kind: 'playlist',
+          title,
+          required: false,
+          payload: { url: `https://www.youtube.com/playlist?list=${LONG}` },
+        });
+
+      beforeAll(() => {
+        harness.youtube.playlists.set(LONG, episodes);
+      });
+      afterEach(() => {
+        harness.youtube.pageSize = 50;
+        harness.youtube.apiDown = false;
+      });
+
+      it('lists all 31 videos through the Data API, page by page', async () => {
+        harness.youtube.pageSize = 10; // four pages
+        const res = await save('Portal academy');
+        expect(res.status).toBe(201);
+        expect(res.body.data.payload.items).toEqual(
+          episodes.map((e) => ({ youtubeId: e.id, title: e.title })),
+        );
+      });
+
+      it('falls back to the feed’s first 15 when the API refuses (quota spent)', async () => {
+        harness.youtube.apiDown = true;
+        const res = await save('Portal academy, feed only');
+        expect(res.status).toBe(201);
+        expect(res.body.data.payload.items).toEqual(
+          episodes.slice(0, 15).map((e) => ({ youtubeId: e.id, title: e.title })),
+        );
+      });
+    });
   });
 });

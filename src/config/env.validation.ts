@@ -106,6 +106,11 @@ export const envValidationSchema = Joi.object({
     .uri({ scheme: ['https', 'http'] })
     .allow('')
     .default(''),
+  [ENV.YOUTUBE_API_KEY]: Joi.string().max(200).allow('').default(''),
+  [ENV.YOUTUBE_API_URL]: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .allow('')
+    .default(''),
 
   // -------------------------------------------------------------------- swagger
   [ENV.SWAGGER_ENABLED]: Joi.boolean().default(true),

@@ -111,6 +111,8 @@ export const startHarness = async (): Promise<Harness> => {
     ROLEPLAY_MAX_TURNS: '4',
     // Playlist lessons read their modules from the fake, never from YouTube.
     YOUTUBE_FEED_URL: youtube.url,
+    YOUTUBE_API_KEY: youtube.apiKey,
+    YOUTUBE_API_URL: youtube.apiUrl,
   });
 
   const stopBackends = async (): Promise<void> => {

@@ -6,6 +6,7 @@ import {
   mergePlaylistOrder,
   normalizePayload,
   parsePlaylistFeed,
+  parsePlaylistItemsPage,
   parsePlaylistLink,
   parseYoutubeLink,
   playlistProgress,
@@ -235,6 +236,34 @@ describe('playlists', () => {
         { youtubeId: 'bbbbbbbbbbb', title: '2 · Getting started' },
       ],
     });
+  });
+
+  it('lists a Data API page’s videos in order, leaving out private and deleted ones', () => {
+    const video = (videoId: string, title: string, privacyStatus = 'public') => ({
+      snippet: { title, resourceId: { kind: 'youtube#video', videoId } },
+      status: { privacyStatus },
+    });
+    expect(
+      parsePlaylistItemsPage({
+        nextPageToken: 'CDIQAA',
+        items: [
+          video('aaaaaaaaaaa', ' 1 · One app & two sides '),
+          video('ppppppppppp', 'Private video', 'private'),
+          video('ddddddddddd', 'Deleted video', 'privacyStatusUnspecified'),
+          video('uuuuuuuuuuu', '2 · Unlisted still plays', 'unlisted'),
+          video('bad', 'Broken'),
+          { snippet: null },
+        ],
+      }),
+    ).toEqual({
+      items: [
+        { youtubeId: 'aaaaaaaaaaa', title: '1 · One app & two sides' },
+        { youtubeId: 'uuuuuuuuuuu', title: '2 · Unlisted still plays' },
+      ],
+      nextPageToken: 'CDIQAA',
+    });
+    expect(parsePlaylistItemsPage({ items: [] })).toEqual({ items: [], nextPageToken: null });
+    expect(parsePlaylistItemsPage('nonsense')).toEqual({ items: [], nextPageToken: null });
   });
 
   it('a playlist is done when every module is watched to 90%', () => {

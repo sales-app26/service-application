@@ -202,6 +202,28 @@ export const parsePlaylistFeed = (xml: string): { title: string | null; items: P
   return { title: title ? decode(title) : null, items };
 };
 
+/**
+ * One page of the YouTube Data API's `playlistItems` (part=snippet,status): its videos in
+ * playlist order, and the token for the next page. Private and deleted videos are left out,
+ * as the feed leaves them out.
+ */
+export const parsePlaylistItemsPage = (
+  body: unknown,
+): { items: PlaylistItem[]; nextPageToken: string | null } => {
+  const page = isRecord(body) ? body : {};
+  const items = (Array.isArray(page.items) ? page.items : []).flatMap((raw: unknown) => {
+    if (!isRecord(raw) || !isRecord(raw.snippet)) return [];
+    const privacy = isRecord(raw.status) ? raw.status.privacyStatus : undefined;
+    if (privacy === 'private' || privacy === 'privacyStatusUnspecified') return [];
+    const resource = isRecord(raw.snippet.resourceId) ? raw.snippet.resourceId : {};
+    const youtubeId = typeof resource.videoId === 'string' ? resource.videoId : '';
+    const title = typeof raw.snippet.title === 'string' ? raw.snippet.title.trim() : '';
+    return YOUTUBE_ID.test(youtubeId) ? [{ youtubeId, title }] : [];
+  });
+  const next = page.nextPageToken;
+  return { items, nextPageToken: typeof next === 'string' && next ? next : null };
+};
+
 export const youtubeThumbnail = (youtubeId: string): string =>
   `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
 
