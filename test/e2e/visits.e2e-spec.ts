@@ -21,6 +21,7 @@ describe('Visit proof capture tokens (e2e)', () => {
       `/projects/${projectId}/leads`,
       {
         name: 'Asha Patil',
+        businessName: 'Patil Sweets',
         phone,
         location: 'Kondhwa',
         status: 'contacted',

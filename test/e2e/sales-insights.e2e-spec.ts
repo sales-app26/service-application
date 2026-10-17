@@ -26,6 +26,7 @@ describe('Sales insights (e2e)', () => {
   const addLead = (client: ApiClient, fields: Record<string, unknown> = {}, project = projectId) =>
     client.post(`/projects/${project}/leads`, {
       name: 'Asha Patil',
+      businessName: 'Patil Sweets',
       phone: String((phone += 1)),
       location: 'Kondhwa',
       status: 'contacted',
@@ -112,6 +113,7 @@ describe('Sales insights (e2e)', () => {
     it('reads them from a multipart form, where every field is a string', async () => {
       const res = await ravi.postForm(`/projects/${projectId}/leads`, {
         name: 'Form Lead',
+        businessName: 'Form Bakery',
         phone: String((phone += 1)),
         location: 'Kondhwa',
         status: 'contacted',
@@ -266,7 +268,11 @@ describe('Sales insights (e2e)', () => {
         cold: null,
       };
       for (const [key, date] of Object.entries(dates)) {
-        const res = await addLead(ravi, { name: key, dealValue: key.length * 100 }, filterProject);
+        const res = await addLead(
+          ravi,
+          { businessName: key, dealValue: key.length * 100 },
+          filterProject,
+        );
         expect(res.status).toBe(201);
         leads[key] = res.body.data.id;
         // A follow-up date can't be set in the past through the API: age it here.
@@ -282,7 +288,7 @@ describe('Sales insights (e2e)', () => {
         [leads.cold],
       );
       // A closed lead with no date is neither "none" nor cold, however old.
-      const closed = await addLead(ravi, { name: 'closed', status: 'lost' }, filterProject);
+      const closed = await addLead(ravi, { businessName: 'closed', status: 'lost' }, filterProject);
       await sql(
         `UPDATE sales.leads SET last_activity_at = now() - interval '60 days' WHERE id = $1`,
         [closed.body.data.id],
@@ -290,7 +296,7 @@ describe('Sales insights (e2e)', () => {
 
       // Two imported leads nobody has contacted yet.
       const csv =
-        'name,phone,location\nImported One,9123400001,Pune\nImported Two,9123400002,Pune\n';
+        'business_name,phone,location\nImported One,9123400001,Pune\nImported Two,9123400002,Pune\n';
       const imported = await admin.postForm(
         `/projects/${filterProject}/leads/import`,
         { ownerId: ids.ravi },
@@ -301,7 +307,7 @@ describe('Sales insights (e2e)', () => {
     });
 
     const names = async (query: string) =>
-      (await list(ravi, query, filterProject)).map((l) => l.name).sort();
+      (await list(ravi, query, filterProject)).map((l) => l.businessName).sort();
 
     it('filters by next follow-up date, India time', async () => {
       expect(await names('due=overdue')).toEqual(['overdue']);
@@ -319,12 +325,14 @@ describe('Sales insights (e2e)', () => {
     it('filters by source and sorts by value and by activity', async () => {
       expect(await names('source=import')).toEqual(['Imported One', 'Imported Two']);
 
-      const byValue = (await list(ravi, 'sort=value', filterProject)).map((l) => l.name);
+      const byValue = (await list(ravi, 'sort=value', filterProject)).map((l) => l.businessName);
       // nextMonth (900), overdue/tomorrow (700/800) … and the deal-less ones last.
       expect(byValue[0]).toBe('nextMonth');
       expect(byValue.slice(-3).sort()).toEqual(['Imported One', 'Imported Two', 'closed']);
 
-      const byActivity = (await list(ravi, 'sort=activity', filterProject)).map((l) => l.name);
+      const byActivity = (await list(ravi, 'sort=activity', filterProject)).map(
+        (l) => l.businessName,
+      );
       expect(byActivity.slice(0, 2)).toEqual(['closed', 'cold']);
     });
 
@@ -483,7 +491,7 @@ describe('Sales insights (e2e)', () => {
       );
 
       // Ravi asked to hand a lead to Priya 30 hours ago; nobody has decided.
-      const lead = (await addLead(ravi, { name: 'Shah Stores' }, pid)).body.data;
+      const lead = (await addLead(ravi, { businessName: 'Shah Stores' }, pid)).body.data;
       const transfer = await ravi.post(`/leads/${lead.id}/transfers`, {
         toUserId: ids.priya,
         reason: 'She covers this area.',

@@ -98,6 +98,7 @@ describe('Access control (e2e)', () => {
   it('an author removed from the project can no longer edit what he logged there today', async () => {
     const lead = await as.Ravi.post(`/projects/${projects.North}/leads`, {
       name: 'Asha Patil',
+      businessName: 'Patil Sweets',
       phone: '9876500111',
       location: 'Baner',
       status: 'contacted',

@@ -16,6 +16,7 @@ describe('Delete leads (e2e)', () => {
   const addLead = async (projectId: string, number = String((phone += 1))) => {
     const res = await rep.post(`/projects/${projectId}/leads`, {
       name: 'Asha Patil',
+      businessName: 'Patil Sweets',
       phone: number,
       location: 'Baner',
       status: 'contacted',

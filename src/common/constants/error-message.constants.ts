@@ -188,30 +188,33 @@ export const IMPORT_ERROR = {
   TOO_MANY_ROWS: 'A sheet can hold at most 1,000 leads. Split it and add the parts one by one.',
   NOT_CSV:
     'We couldn’t read this sheet. In Excel or Google Sheets, save it as “CSV (comma separated)” and try again.',
-  MISSING_COLUMNS: 'The top line of the sheet needs headings, including name and phone.',
+  MISSING_COLUMNS: 'The top line of the sheet needs headings, including business_name and phone.',
   EMPTY: 'This sheet has no leads in it.',
   OWNER_NOT_MEMBER: 'Choose only people on this campaign’s team to get the leads.',
   ASSIGNMENTS_INVALID: 'We couldn’t read who gets which lead. Check the sheet and try again.',
-  UNASSIGNED: 'Every lead needs a person. Assign the rest, then add the leads.',
   RACE: 'Someone added some of these numbers a moment ago. Check the sheet again.',
-  ROW_NAME: 'Name is missing.',
+  ROW_BUSINESS_NAME: 'Business name is missing.',
   ROW_PHONE: 'Phone must be a 10-digit Indian mobile number.',
   ROW_NO_LOCATION: 'No location: fill one in, or pick a default location.',
-  ROW_NO_OWNER: 'No owner: choose who gets this lead, or fill in owner_email.',
-  ROW_OWNER_UNKNOWN: 'No one on this campaign’s team has this owner_email.',
   ROW_LONG: 'Some details are too long.',
   ROW_SAME_NUMBER: (line: number): string => `Same number as line ${line} of this sheet.`,
   ROW_ALREADY_LEAD: (owner: string): string =>
     `Already a lead in this campaign, owned by ${owner}.`,
+  ROW_ALREADY_UNASSIGNED: 'Already a lead in this campaign, not assigned to anyone yet.',
 } as const;
 
 export const LEAD_ERROR = {
   LEADS_NOT_IN_PROJECT: 'Some of these leads aren’t in this campaign, or were already deleted.',
   NOT_FOUND: 'We couldn’t find this lead.',
+  BUSINESS_NAME_REQUIRED: 'Add the business name before removing the person’s name.',
+  /** A lead a bulk upload left for later: nothing happens on it until someone owns it. */
+  UNASSIGNED: 'This lead isn’t assigned to anyone yet. Assign it first.',
   INVALID_PHONE: 'Enter a 10-digit Indian mobile number.',
   DUPLICATE_OWN: 'You already have this lead.',
   DUPLICATE_OTHER: (owner: string): string =>
     `This number is already a lead in this campaign, owned by ${owner}.`,
+  DUPLICATE_UNASSIGNED:
+    'This number is already a lead in this campaign, waiting to be assigned. Ask a sales manager for it.',
   /** The same rule caught at the last moment, when the owner's name is not at hand. */
   DUPLICATE_ANY: 'This number is already a lead in this campaign.',
   NOT_A_MEMBER: 'You aren’t on this campaign’s team.',

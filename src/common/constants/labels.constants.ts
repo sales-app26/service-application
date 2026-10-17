@@ -52,3 +52,5 @@ export const PLAN_LABEL: Record<PlanCode, string> = {
 
 export const YES = 'Yes';
 export const NO = 'No';
+/** An export's owner cell for a lead no one has been given yet. */
+export const NOT_ASSIGNED = 'Not assigned';

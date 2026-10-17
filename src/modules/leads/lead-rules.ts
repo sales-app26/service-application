@@ -2,6 +2,7 @@ import {
   BUSINESS_RULE,
   ERROR_CODE,
   FOLLOW_UP_ERROR,
+  LEAD_ERROR,
   REASON_STATUSES,
   TERMINAL_STATUSES,
 } from '../../common/constants';
@@ -100,6 +101,18 @@ export const assertManualStatusChange = (
     throw new ForbiddenBusinessException(FOLLOW_UP_ERROR.CONVERTED_LOCKED);
   }
 };
+
+/**
+ * A lead a bulk upload left unassigned stays as it is — no follow-up, no status change — until
+ * an admin assigns it: there is no one to credit a win to.
+ */
+export function assertAssigned<T extends { ownerId: string | null }>(
+  lead: T,
+): asserts lead is T & { ownerId: string } {
+  if (!lead.ownerId) {
+    throw new BusinessException(LEAD_ERROR.UNASSIGNED, ERROR_CODE.UNPROCESSABLE);
+  }
+}
 
 export interface ConversionState {
   convertedAt: Date | null;

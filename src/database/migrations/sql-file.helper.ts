@@ -36,6 +36,10 @@ export const SQL_FILE = {
   TRAINING_DOWN: '09_training_down.sql',
   TRAINING_PLAYLISTS: '10_training_playlists.sql',
   TRAINING_PLAYLISTS_DOWN: '10_training_playlists_down.sql',
+  LEAD_BUSINESS_NAME: '11_lead_business_name.sql',
+  LEAD_BUSINESS_NAME_DOWN: '11_lead_business_name_down.sql',
+  UNASSIGNED_LEADS: '12_unassigned_leads.sql',
+  UNASSIGNED_LEADS_DOWN: '12_unassigned_leads_down.sql',
 } as const;
 
 export const readSqlFile = (fileName: string): string =>

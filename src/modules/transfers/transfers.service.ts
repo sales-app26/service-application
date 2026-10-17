@@ -19,7 +19,7 @@ import {
   ForbiddenBusinessException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
-import { normaliseIndianMobile } from '../../common/utils';
+import { leadLabel, normaliseIndianMobile } from '../../common/utils';
 import { Lead, LeadComment, LeadTransfer, User } from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
 import { LeadAccessService } from '../leads/lead-access.service';
@@ -131,6 +131,10 @@ export class TransfersService {
           leadId: lead.id,
         });
       }
+      // Not assigned yet: there is no owner to hand it over; an admin assigns it.
+      if (!lead.ownerId) {
+        throw new BusinessException(LEAD_ERROR.DUPLICATE_UNASSIGNED, ERROR_CODE.UNPROCESSABLE);
+      }
 
       const recipient = await this.assertRecipient(manager, lead, actor.id);
       return this.createPending(manager, actor, lead, recipient, dto.reason);
@@ -178,8 +182,12 @@ export class TransfersService {
         kind: NotificationKind.TRANSFER_REQUESTED,
         title:
           recipient.id === actor.id
-            ? NOTIFICATION_TEXT.LEAD_REQUESTED_TITLE(actor.name, lead.name)
-            : NOTIFICATION_TEXT.TRANSFER_REQUESTED_TITLE(actor.name, lead.name, recipient.name),
+            ? NOTIFICATION_TEXT.LEAD_REQUESTED_TITLE(actor.name, leadLabel(lead))
+            : NOTIFICATION_TEXT.TRANSFER_REQUESTED_TITLE(
+                actor.name,
+                leadLabel(lead),
+                recipient.name,
+              ),
         body: reason,
         link: NOTIFICATION_LINK.TRANSFERS,
         leadId: lead.id,
@@ -312,7 +320,7 @@ export class TransfersService {
       items.push({
         userId: transfer.toUserId,
         kind: NotificationKind.LEAD_ASSIGNED,
-        title: NOTIFICATION_TEXT.LEAD_ASSIGNED_TITLE(actor.name, lead.name),
+        title: NOTIFICATION_TEXT.LEAD_ASSIGNED_TITLE(actor.name, leadLabel(lead)),
         body: note,
         link,
         leadId: lead.id,
@@ -320,9 +328,12 @@ export class TransfersService {
     }
     const title =
       decision === TransferStatus.APPROVED
-        ? NOTIFICATION_TEXT.TRANSFER_APPROVED_TITLE(actor.name, lead.name, recipient.name)
-        : NOTIFICATION_TEXT.TRANSFER_REJECTED_TITLE(actor.name, lead.name, recipient.name);
-    for (const userId of [transfer.requestedBy, transfer.fromUserId]) {
+        ? NOTIFICATION_TEXT.TRANSFER_APPROVED_TITLE(actor.name, leadLabel(lead), recipient.name)
+        : NOTIFICATION_TEXT.TRANSFER_REJECTED_TITLE(actor.name, leadLabel(lead), recipient.name);
+    // A decided request always came from an owner; the filter only satisfies the type.
+    for (const userId of [transfer.requestedBy, transfer.fromUserId].filter(
+      (id): id is string => id !== null,
+    )) {
       items.push({
         userId,
         kind: NotificationKind.TRANSFER_DECIDED,
@@ -439,7 +450,7 @@ export class TransfersService {
           ? {
               userId: recipient.id,
               kind: NotificationKind.LEAD_ASSIGNED,
-              title: NOTIFICATION_TEXT.LEAD_ASSIGNED_TITLE(actor.name, moving[0].name),
+              title: NOTIFICATION_TEXT.LEAD_ASSIGNED_TITLE(actor.name, leadLabel(moving[0])),
               body: dto.reason,
               link: NOTIFICATION_LINK.LEAD(moving[0].id),
               leadId: moving[0].id,
@@ -518,15 +529,18 @@ export class TransfersService {
   }
 
   private baseQuery(): SelectQueryBuilder<LeadTransfer> {
-    return this.transfers
-      .createQueryBuilder('t')
-      .innerJoinAndSelect('t.lead', 'lead')
-      .innerJoinAndSelect('lead.project', 'project')
-      .innerJoinAndSelect('t.fromUser', 'fromUser')
-      .innerJoinAndSelect('t.toUser', 'toUser')
-      .innerJoinAndSelect('t.requester', 'requester')
-      .leftJoinAndSelect('t.decider', 'decider')
-      .andWhere('lead.deleted_at IS NULL');
+    return (
+      this.transfers
+        .createQueryBuilder('t')
+        .innerJoinAndSelect('t.lead', 'lead')
+        .innerJoinAndSelect('lead.project', 'project')
+        // Left: assigning a lead from Not assigned is recorded with no one it came from.
+        .leftJoinAndSelect('t.fromUser', 'fromUser')
+        .innerJoinAndSelect('t.toUser', 'toUser')
+        .innerJoinAndSelect('t.requester', 'requester')
+        .leftJoinAndSelect('t.decider', 'decider')
+        .andWhere('lead.deleted_at IS NULL')
+    );
   }
 
   private async applyScope(
@@ -610,7 +624,9 @@ export class TransfersService {
         projectId: transfer.lead.projectId,
         projectName: transfer.lead.project.name,
       },
-      fromUser: { id: transfer.fromUser.id, name: transfer.fromUser.name },
+      fromUser: transfer.fromUser
+        ? { id: transfer.fromUser.id, name: transfer.fromUser.name }
+        : null,
       toUser: { id: transfer.toUser.id, name: transfer.toUser.name },
       requestedBy: { id: transfer.requester.id, name: transfer.requester.name },
       reason: transfer.reason,

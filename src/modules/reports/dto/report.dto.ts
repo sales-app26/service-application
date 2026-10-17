@@ -247,8 +247,8 @@ export class TimelineLeadRefDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
 
-  @ApiProperty()
-  name: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The owner or manager, if known.' })
+  name: string | null;
 
   @ApiPropertyOptional({ nullable: true, type: String })
   businessName: string | null;
@@ -396,8 +396,8 @@ export class ConversionDto {
   @ApiProperty({ format: 'uuid' })
   leadId: string;
 
-  @ApiProperty()
-  leadName: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The owner or manager, if known.' })
+  leadName: string | null;
 
   @ApiPropertyOptional({ nullable: true, type: String })
   businessName: string | null;

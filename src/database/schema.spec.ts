@@ -1207,3 +1207,174 @@ describe('10_training_playlists.sql', () => {
     expect(cols.rows).toEqual([]);
   });
 });
+
+describe('11_lead_business_name.sql', () => {
+  let db: PGlite;
+  const admin = randomUUID();
+  const project = randomUUID();
+  const location = randomUUID();
+
+  const insertLead = (name: string | null, businessName: string | null, phone: string) =>
+    db.query(
+      `INSERT INTO leads (id, project_id, owner_id, name, business_name, phone, location_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [randomUUID(), project, admin, name, businessName, phone, location],
+    );
+
+  beforeAll(async () => {
+    db = new PGlite();
+    for (const file of [
+      SQL_FILE.SALES_SCHEMA,
+      SQL_FILE.USER_DELETION,
+      SQL_FILE.SINGLE_USE_CAPTURE,
+      SQL_FILE.SALES_INSIGHTS,
+      SQL_FILE.TEAM_COLLABORATION,
+      SQL_FILE.VISIT_PLACE,
+      SQL_FILE.DEAL_TERMS,
+      SQL_FILE.TRAINING,
+      SQL_FILE.TRAINING_PLAYLISTS,
+    ]) {
+      await db.exec(readSqlFile(file));
+    }
+    await db.exec('SET search_path TO sales');
+    await db.query(
+      `INSERT INTO users (id, name, email, role) VALUES ($1, 'Head', 'head@x.in', 'super_admin')`,
+      [admin],
+    );
+    await db.query(
+      `INSERT INTO projects (id, name, type, start_date, created_by) VALUES ($1, 'Pune', 'door_to_door', '2026-10-01', $2)`,
+      [project, admin],
+    );
+    await db.query(`INSERT INTO locations (id, project_id, name) VALUES ($1, $2, 'Camp')`, [
+      location,
+      project,
+    ]);
+    // A lead from before: a person's name, no business name.
+    await insertLead('Anil Sharma', null, '9876543210');
+    await db.exec(readSqlFile(SQL_FILE.LEAD_BUSINESS_NAME));
+  }, 30_000);
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('can run again, and leaves older leads as they were', async () => {
+    await expect(db.exec(readSqlFile(SQL_FILE.LEAD_BUSINESS_NAME))).resolves.toBeDefined();
+    const { rows } = await db.query(`SELECT name, business_name FROM leads`);
+    expect(rows).toEqual([{ name: 'Anil Sharma', business_name: null }]);
+  });
+
+  it('takes a lead with only a business name', async () => {
+    await expect(insertLead(null, 'Sharma Sweets', '9876543211')).resolves.toBeDefined();
+  });
+
+  it('refuses a lead with neither name, and a blank person’s name', async () => {
+    await expect(insertLead(null, null, '9876543212')).rejects.toThrow(/leads_named/);
+    await expect(insertLead(null, '  ', '9876543213')).rejects.toThrow(/leads_named/);
+    await expect(insertLead('  ', 'Sharma Sweets', '9876543214')).rejects.toThrow(
+      /leads_name_present/,
+    );
+  });
+
+  it('reverts cleanly, naming each lead after its business', async () => {
+    await db.exec(readSqlFile(SQL_FILE.LEAD_BUSINESS_NAME_DOWN));
+    const { rows } = await db.query(`SELECT name FROM leads ORDER BY phone`);
+    expect(rows).toEqual([{ name: 'Anil Sharma' }, { name: 'Sharma Sweets' }]);
+    await expect(insertLead(null, 'Kapoor Cakes', '9876543215')).rejects.toThrow(/null value/);
+  });
+});
+
+describe('12_unassigned_leads.sql', () => {
+  let db: PGlite;
+  const admin = randomUUID();
+  const rep = randomUUID();
+  const project = randomUUID();
+  const location = randomUUID();
+
+  const insertLead = (ownerId: string | null, status: string, phone: string) =>
+    db.query(
+      `INSERT INTO leads (id, project_id, owner_id, business_name, phone, location_id, status, created_by)
+       VALUES ($1, $2, $3, 'Kapoor Cakes', $4, $5, $6, $7) RETURNING id`,
+      [randomUUID(), project, ownerId, phone, location, status, admin],
+    );
+  const insertTransfer = (leadId: string, from: string | null, status: string) =>
+    db.query(
+      `INSERT INTO lead_transfers (lead_id, from_user_id, to_user_id, reason, status, requested_by, decided_by, decided_at)
+       VALUES ($1, $2, $3, 'From the upload.', $4, $5, $6, $7)`,
+      [
+        leadId,
+        from,
+        rep,
+        status,
+        admin,
+        status === 'pending' ? null : admin,
+        status === 'pending' ? null : new Date(),
+      ],
+    );
+
+  beforeAll(async () => {
+    db = new PGlite();
+    for (const file of [
+      SQL_FILE.SALES_SCHEMA,
+      SQL_FILE.USER_DELETION,
+      SQL_FILE.SINGLE_USE_CAPTURE,
+      SQL_FILE.SALES_INSIGHTS,
+      SQL_FILE.TEAM_COLLABORATION,
+      SQL_FILE.VISIT_PLACE,
+      SQL_FILE.DEAL_TERMS,
+      SQL_FILE.TRAINING,
+      SQL_FILE.TRAINING_PLAYLISTS,
+      SQL_FILE.LEAD_BUSINESS_NAME,
+      SQL_FILE.UNASSIGNED_LEADS,
+    ]) {
+      await db.exec(readSqlFile(file));
+    }
+    await db.exec('SET search_path TO sales');
+    await db.query(
+      `INSERT INTO users (id, name, email, role) VALUES ($1, 'Head', 'head@x.in', 'super_admin'),
+              ($2, 'Ravi', 'ravi@x.in', 'sales_person')`,
+      [admin, rep],
+    );
+    await db.query(
+      `INSERT INTO projects (id, name, type, start_date, created_by) VALUES ($1, 'Pune', 'door_to_door', '2026-10-01', $2)`,
+      [project, admin],
+    );
+    await db.query(`INSERT INTO locations (id, project_id, name) VALUES ($1, $2, 'Camp')`, [
+      location,
+      project,
+    ]);
+  }, 30_000);
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('can run again', async () => {
+    await expect(db.exec(readSqlFile(SQL_FILE.UNASSIGNED_LEADS))).resolves.toBeDefined();
+  });
+
+  it('takes an unassigned lead only while it is New', async () => {
+    await expect(insertLead(null, 'new', '9876543220')).resolves.toBeDefined();
+    await expect(insertLead(null, 'contacted', '9876543221')).rejects.toThrow(
+      /leads_unassigned_new/,
+    );
+  });
+
+  it('records assigning it, approved and from no one; a request always has an owner', async () => {
+    const { rows } = await insertLead(null, 'new', '9876543222');
+    const leadId = (rows[0] as { id: string }).id;
+    await expect(insertTransfer(leadId, null, 'approved')).resolves.toBeDefined();
+    await expect(insertTransfer(leadId, null, 'pending')).rejects.toThrow(
+      /lead_transfers_from_present/,
+    );
+  });
+
+  it('reverts cleanly, giving waiting leads to whoever added them', async () => {
+    await db.exec(readSqlFile(SQL_FILE.UNASSIGNED_LEADS_DOWN));
+    const { rows } = await db.query(`SELECT DISTINCT owner_id FROM leads`);
+    expect(rows).toEqual([{ owner_id: admin }]);
+    const transfers = await db.query(`SELECT 1 FROM lead_transfers`);
+    expect(transfers.rows).toEqual([]);
+    await expect(insertLead(null, 'new', '9876543223')).rejects.toThrow(/null value/);
+  });
+});

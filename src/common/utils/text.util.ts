@@ -8,6 +8,13 @@ export const collapseWhitespace = (value: string): string => value.trim().replac
 export const escapeLike = (value: string): string =>
   value.replace(/[\\%_]/gu, (char) => `\\${char}`);
 
+/**
+ * What to call a lead in a list, a title or a notification: its business name, or the
+ * person's name for older leads saved before a business name was required.
+ */
+export const leadLabel = (lead: { name: string | null; businessName: string | null }): string =>
+  lead.businessName ?? lead.name ?? '';
+
 /** Trimmed text, or null when nothing is left. */
 export const blankToNull = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') return null;

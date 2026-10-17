@@ -30,13 +30,13 @@ export class LeadTransfer {
   @JoinColumn({ name: 'lead_id' })
   lead: Lead;
 
-  /** Owner at the time of the request. */
-  @Column({ name: 'from_user_id', type: PG_TYPE.UUID })
-  fromUserId: string;
+  /** Owner at the time of the request. Null when an unassigned lead was assigned. */
+  @Column({ name: 'from_user_id', type: PG_TYPE.UUID, nullable: true })
+  fromUserId: string | null;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'from_user_id' })
-  fromUser: User;
+  fromUser: User | null;
 
   @Column({ name: 'to_user_id', type: PG_TYPE.UUID })
   toUserId: string;

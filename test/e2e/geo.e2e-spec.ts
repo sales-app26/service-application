@@ -29,6 +29,7 @@ describe('Visit place and place lookups (e2e)', () => {
       `/projects/${projectId}/leads`,
       {
         name: 'Asha Patil',
+        businessName: 'Patil Sweets',
         phone: String((phone += 1)),
         location: 'Wanowrie',
         status: 'contacted',
@@ -199,6 +200,7 @@ describe('Visit place and place lookups (e2e)', () => {
       harness.geocoder.reset();
       const online = await ravi.post(`/projects/${onlineProjectId}/leads`, {
         name: 'Imran Shaikh',
+        businessName: 'Shaikh Bakers',
         phone: String((phone += 1)),
         location: 'Kondhwa',
         status: 'contacted',

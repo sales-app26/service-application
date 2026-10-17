@@ -37,6 +37,7 @@ import { OfferDiscount } from './deal-rules';
 import { EntryPresenter } from './entry.presenter';
 import { LeadAccessService } from './lead-access.service';
 import {
+  assertAssigned,
   assertFollowUpStatus,
   assertManualStatusChange,
   conversionAfter,
@@ -145,6 +146,7 @@ export class EntriesService {
         await this.access.lockOpenProject(manager, lead.projectId);
         const locked = await this.leadAccess.lockLead(manager, leadId);
 
+        assertAssigned(locked);
         // The form may have been open while the lead was transferred away, or
         // while the owner's leave ended.
         const coveringFor = await this.coveredOwner(actor, locked, manager);
@@ -251,6 +253,7 @@ export class EntriesService {
         await this.access.lockOpenProject(manager, lead.projectId);
         const locked = await this.leadAccess.lockLead(manager, leadId);
 
+        assertAssigned(locked);
         const coveringFor = visibility.isCovering
           ? await this.coveredOwner(actor, locked, manager)
           : null;

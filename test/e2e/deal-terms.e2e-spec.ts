@@ -23,6 +23,7 @@ describe('Deal terms (e2e)', () => {
   const addLead = (client: ApiClient, fields: Record<string, unknown> = {}) =>
     client.post(`/projects/${projectId}/leads`, {
       name: 'Asha Patil',
+      businessName: 'Patil Sweets',
       phone: String((phone += 1)),
       location: 'Kondhwa',
       status: 'interested',

@@ -68,7 +68,8 @@ describe('Bulk import and person summary (e2e)', () => {
   // ------------------------------------------------------------------ import
 
   describe('import', () => {
-    const header = 'name,phone,business_name,location,notes,owner_email\n';
+    // The business first: it is required, the person (owner or manager) is not.
+    const header = 'business_name,phone,name,location,notes,owner_email\n';
 
     it('is for admins of the project only', async () => {
       expect(
@@ -87,7 +88,7 @@ describe('Bulk import and person summary (e2e)', () => {
       ).toBe(404);
     });
 
-    it('refuses a missing file, a file with no name/phone columns, and an empty one', async () => {
+    it('refuses a missing file, a file with no business_name/phone columns, and an empty one', async () => {
       const none = await moderator.postForm(`/projects/${projectId}/leads/import`, {
         ownerIds: ids.ravi,
       });
@@ -98,7 +99,15 @@ describe('Bulk import and person summary (e2e)', () => {
         ownerIds: ids.ravi,
       });
       expect(noColumns.status).toBe(400);
-      expect(noColumns.body.message).toMatch(/name and phone/);
+      expect(noColumns.body.message).toMatch(/business_name and phone/);
+
+      // A person's name alone is no longer enough.
+      const personOnly = await upload(moderator, projectId, 'name,phone\nAsha,9876543210\n', {
+        ownerIds: ids.ravi,
+        defaultLocation: 'Pune',
+      });
+      expect(personOnly.status).toBe(400);
+      expect(personOnly.body.message).toMatch(/business_name and phone/);
 
       const empty = await upload(moderator, projectId, header, { ownerIds: ids.ravi });
       expect(empty.status).toBe(400);
@@ -146,7 +155,7 @@ describe('Bulk import and person summary (e2e)', () => {
       // Four importable rows share two people evenly, in file order, starting with the first person picked.
       expect(res.body.data.byOwner.map((o: any) => o.count)).toEqual([2, 2]);
       expect(
-        res.body.data.sample.map((s: any) => [s.name, s.phone, s.location, s.owner.name]),
+        res.body.data.sample.map((s: any) => [s.businessName, s.phone, s.location, s.owner.name]),
       ).toEqual([
         ['Asha Patil', '9876543210', 'Wanowrie', 'Ravi Kumar'],
         ['Imran Shaikh', '9876543211', 'Pune', 'Priya Desai'],
@@ -159,6 +168,10 @@ describe('Bulk import and person summary (e2e)', () => {
         [7, 'duplicate'],
       ]);
       expect(res.body.data.problems[0].reason).toMatch(/10-digit/);
+      expect(res.body.data.problems[1]).toMatchObject({
+        name: '(no name)',
+        reason: 'Business name is missing.',
+      });
       expect(res.body.data.problems[2].reason).toBe('Same number as line 2 of this sheet.');
       expect(await leadsOf(admin)).toHaveLength(0);
     });
@@ -183,7 +196,7 @@ describe('Bulk import and person summary (e2e)', () => {
 
       const all = await leadsOf(admin);
       expect(all).toHaveLength(4);
-      const owners = Object.fromEntries(all.map((l) => [l.name, l.owner.name]));
+      const owners = Object.fromEntries(all.map((l) => [l.businessName, l.owner.name]));
       // owner_email wins; the other three are shared by file order: Ravi, Priya, Ravi.
       expect(owners).toEqual({
         'Asha Patil': 'Ravi Kumar',
@@ -195,7 +208,12 @@ describe('Bulk import and person summary (e2e)', () => {
 
       // A sales person sees only his own, and can open one; there is no first entry, no photo needed.
       const mine = await leadsOf(ravi);
-      expect(mine.map((l) => l.name).sort()).toEqual(['Asha Patil', 'Suresh Rao']);
+      expect(mine.map((l) => l.businessName).sort()).toEqual(['Asha Patil', 'Suresh Rao']);
+      // The person's name is optional: a row without one is a lead with no name.
+      expect(all.find((l) => l.businessName === 'Imran Shaikh')).toMatchObject({ name: null });
+      expect(all.find((l) => l.businessName === 'Asha Patil')).toMatchObject({
+        name: 'Patil Store',
+      });
       const detail = await ravi.get(`/leads/${mine[0].id}`);
       expect(detail.body.data).toMatchObject({
         entryCount: 0,
@@ -217,19 +235,84 @@ describe('Bulk import and person summary (e2e)', () => {
       expect(await leadsOf(admin)).toHaveLength(5);
     });
 
-    it('rejects rows with an unknown owner, no owner, or no location, and still imports the good ones', async () => {
+    it('a lead no one gets goes in unassigned; a missing location is still refused', async () => {
       const csv =
         header +
         'A One,9000000010,,Kondhwa,,ghost@pronttera.in\n' +
         'B Two,9000000011,,,,\n' +
         'C Three,9000000012,,Kondhwa,,priya@pronttera.in\n';
-      // No ownerIds and no default location.
+      // No ownerIds and no default location; the first row's owner_email is no one on the team.
       const res = await upload(moderator, projectId, csv);
-      expect(res.body.data).toMatchObject({ imported: 1, invalid: 2 });
+      expect(res.body.data).toMatchObject({ imported: 2, invalid: 1, unassigned: 1 });
+      expect(res.body.data.byOwner).toEqual([
+        { user: { id: ids.priya, name: 'Priya Desai' }, count: 1 },
+      ]);
       expect(res.body.data.problems.map((p: any) => p.reason)).toEqual([
-        'No one on this campaign’s team has this owner_email.',
         'No location: fill one in, or pick a default location.',
       ]);
+    });
+
+    it('an unassigned lead: only admins see it, nothing happens on it until it is assigned', async () => {
+      const waiting = await moderator.get(`/projects/${projectId}/leads?unassigned=true`);
+      expect(waiting.body.data.items).toHaveLength(1);
+      const lead = waiting.body.data.items[0];
+      expect(lead).toMatchObject({
+        businessName: 'A One',
+        owner: null,
+        ownerTag: null,
+        status: 'new',
+      });
+      expect(await leadsOf(ravi)).not.toContainEqual(expect.objectContaining({ id: lead.id }));
+      expect((await ravi.get(`/leads/${lead.id}`)).status).toBe(404);
+
+      const detail = await moderator.get(`/leads/${lead.id}`);
+      expect(detail.body.data.permissions).toMatchObject({
+        canLogFollowUp: false,
+        canChangeStatus: false,
+        canEdit: true,
+        canReassign: true,
+      });
+      // The admin can tidy the details, but not move it along.
+      const tidied = await moderator.patch(`/leads/${lead.id}`, { name: 'Anil One' });
+      expect(tidied.body.data).toMatchObject({ name: 'Anil One', owner: null });
+      const status = await moderator.post(`/leads/${lead.id}/status`, {
+        clientRequestId: requestId(),
+        status: 'contacted',
+        note: 'Called.',
+      });
+      expect(status.status).toBe(422);
+      expect(status.body.message).toBe('This lead isn’t assigned to anyone yet. Assign it first.');
+
+      // Adding the same number again says it is waiting, without naming anyone.
+      const again = await ravi.post(`/projects/${projectId}/leads`, {
+        businessName: 'A One',
+        phone: '9000000010',
+        location: 'Kondhwa',
+        status: 'contacted',
+        note: 'Met them.',
+        clientRequestId: requestId(),
+      });
+      expect(again.status).toBe(409);
+      expect(again.body.message).toMatch(/waiting to be assigned/);
+
+      // Assigned: it is Ravi's, he is told, and he works it as usual.
+      const assigned = await moderator.post(`/projects/${projectId}/leads/reassign`, {
+        leadIds: [lead.id],
+        toUserId: ids.ravi,
+        reason: 'From the upload.',
+      });
+      expect(assigned.body.data).toEqual({ reassigned: 1, skipped: 0 });
+      expect((await ravi.get(`/leads/${lead.id}`)).body.data).toMatchObject({
+        owner: { id: ids.ravi },
+        permissions: { canLogFollowUp: true },
+      });
+      const told = (await ravi.get('/notifications?limit=50')).body.data.items as Array<any>;
+      expect(told).toContainEqual(
+        expect.objectContaining({ kind: 'lead_assigned', leadId: lead.id }),
+      );
+      expect(
+        (await moderator.get(`/projects/${projectId}/leads?unassigned=true`)).body.data.items,
+      ).toEqual([]);
     });
 
     it('reads what Excel writes: a byte-order mark and Windows-1252 accents', async () => {
@@ -238,12 +321,12 @@ describe('Bulk import and person summary (e2e)', () => {
       const res = await upload(moderator, projectId, win1252);
       expect(res.body.data.imported).toBe(1);
       const created = (await leadsOf(admin)).find((l) => l.phone === '9000000020');
-      expect(created.name).toBe('José Álvarez');
+      expect(created.businessName).toBe('José Álvarez');
 
       const bom = await upload(
         moderator,
         projectId,
-        Buffer.from('﻿name,phone\nWith Bom,9000000021\n', 'utf8'),
+        Buffer.from('﻿business_name,phone\nWith Bom,9000000021\n', 'utf8'),
         { ownerIds: ids.ravi, defaultLocation: 'Pune' },
       );
       expect(bom.body.data.imported).toBe(1);
@@ -316,13 +399,6 @@ describe('Bulk import and person summary (e2e)', () => {
         [4, 'Priya Desai'],
       ]);
 
-      // Importing with rows still unassigned is refused, and nothing is saved.
-      const partial = await upload(moderator, pid, csv, {
-        assignments: JSON.stringify({ 2: ids.ravi }),
-      });
-      expect(partial.status).toBe(400);
-      expect(await leadsOf(admin, pid)).toHaveLength(0);
-
       const bad = await upload(moderator, pid, csv, {
         assignments: JSON.stringify({ 2: ids.karan, 3: ids.ravi }),
       });
@@ -336,6 +412,31 @@ describe('Bulk import and person summary (e2e)', () => {
       expect(res.body.data.byOwner).toEqual([
         { user: { id: ids.ravi, name: 'Ravi Kumar' }, count: 3 },
       ]);
+    });
+
+    it('review: rows left unpicked go in unassigned, to hand out later', async () => {
+      const online = await admin.post('/projects', {
+        name: 'Later Drive',
+        type: 'online',
+        startDate: '2026-09-01',
+      });
+      const pid = online.body.data.id;
+      for (const id of [ids.meera, ids.ravi, ids.priya]) {
+        await admin.post(`/projects/${pid}/members`, { userId: id });
+      }
+      const csv =
+        header +
+        'One,9876533001,,Pune,,\n' +
+        'Two,9876533002,,Pune,,nobody@pronttera.in\n' +
+        'Three,9876533003,,Pune,,priya@pronttera.in\n';
+      // Only line 2 picked on screen; line 4's owner_email names Priya; line 3 is no one's.
+      const res = await upload(moderator, pid, csv, {
+        assignments: JSON.stringify({ 2: ids.ravi }),
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ imported: 3, unassigned: 1 });
+      const waiting = await moderator.get(`/projects/${pid}/leads?unassigned=true`);
+      expect(waiting.body.data.items.map((l: any) => l.businessName)).toEqual(['Two']);
     });
 
     it('one person: every row goes to them, whatever owner_email says', async () => {

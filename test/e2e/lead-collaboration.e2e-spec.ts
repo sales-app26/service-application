@@ -46,6 +46,7 @@ describe('Lead collaboration (e2e)', () => {
   const addLead = async (client: ApiClient, fields: Record<string, unknown> = {}) => {
     const res = await client.post(`/projects/${projects.North}/leads`, {
       name: 'Asha Patil',
+      businessName: 'Patil Sweets',
       phone: String((phone += 1)),
       location: 'Baner',
       status: 'contacted',
@@ -59,6 +60,7 @@ describe('Lead collaboration (e2e)', () => {
   const addLeadRaw = (client: ApiClient, number: string) =>
     client.post(`/projects/${projects.North}/leads`, {
       name: 'Duplicate',
+      businessName: 'Duplicate Stores',
       phone: number,
       location: 'Baner',
       status: 'contacted',
@@ -86,7 +88,8 @@ describe('Lead collaboration (e2e)', () => {
     await person('Sana Shaikh', 'sales_person');
     await project('North', ['Meera', 'Omar', 'Ravi', 'Priya']);
     await project('South', ['Farah', 'Sana']);
-    lead = await addLead(as.Ravi, { name: 'Anil Sharma' });
+    // Notifications name a lead by its business.
+    lead = await addLead(as.Ravi, { name: 'Anil Sharma', businessName: 'Sharma Stores' });
   });
 
   afterAll(async () => {
@@ -162,7 +165,7 @@ describe('Lead collaboration (e2e)', () => {
 
       const [mention] = await inbox(as.Omar, 'mention');
       expect(mention).toMatchObject({
-        title: 'Meera Nair mentioned you on Anil Sharma',
+        title: 'Meera Nair mentioned you on Sharma Stores',
         body: long.slice(0, 140),
         link: `/leads/${lead.id}`,
         actor: { id: ids.Meera, name: 'Meera Nair' },
@@ -171,7 +174,7 @@ describe('Lead collaboration (e2e)', () => {
       });
       const [owner] = await inbox(as.Ravi, 'comment');
       expect(owner).toMatchObject({
-        title: 'Meera Nair left a note on Anil Sharma',
+        title: 'Meera Nair left a note on Sharma Stores',
         link: `/leads/${lead.id}`,
       });
       // Never the author.
@@ -248,7 +251,7 @@ describe('Lead collaboration (e2e)', () => {
 
       const [note] = await inbox(as.Ravi, 'feedback');
       expect(note).toMatchObject({
-        title: 'Meera Nair left feedback on your follow-up with Anil Sharma',
+        title: 'Meera Nair left feedback on your follow-up with Sharma Stores',
         link: `/day?date=${today}`,
       });
       // The owner wrote the entry: one notification, not a second "comment" one.
@@ -286,7 +289,7 @@ describe('Lead collaboration (e2e)', () => {
       for (const who of ['Meera', 'Omar']) {
         expect(await inbox(as[who], 'help_requested')).toEqual([
           expect.objectContaining({
-            title: 'Ravi Kumar asked for help on Anil Sharma',
+            title: 'Ravi Kumar asked for help on Sharma Stores',
             link: `/leads/${lead.id}`,
           }),
         ]);
@@ -308,7 +311,7 @@ describe('Lead collaboration (e2e)', () => {
         kind: 'help_request',
         user: { id: ids.Ravi, name: 'Ravi Kumar' },
         projectName: 'North',
-        detail: 'Asked for help on Anil Sharma',
+        detail: 'Asked for help on Sharma Stores',
         leadId: lead.id,
       });
       const farahs = (await as.Farah.get('/dashboard')).body.data.needsAttention;
@@ -324,7 +327,7 @@ describe('Lead collaboration (e2e)', () => {
         canResolve: false,
       });
       expect(await inbox(as.Ravi, 'help_resolved')).toEqual([
-        expect.objectContaining({ title: 'Omar Khan resolved your help request on Anil Sharma' }),
+        expect.objectContaining({ title: 'Omar Khan resolved your help request on Sharma Stores' }),
       ]);
       expect((await as.Omar.post(`/comments/${helpId}/resolve`)).status).toBe(409);
 
@@ -385,7 +388,7 @@ describe('Lead collaboration (e2e)', () => {
       for (const who of [as.Meera, as.Omar, admin]) {
         expect(await inbox(who, 'transfer_requested')).toEqual([
           expect.objectContaining({
-            title: 'Ravi Kumar asked to hand over Anil Sharma to Priya Desai',
+            title: 'Ravi Kumar asked to hand over Sharma Stores to Priya Desai',
             body: 'She covers Baner now.',
             link: '/transfers',
           }),
@@ -406,7 +409,7 @@ describe('Lead collaboration (e2e)', () => {
       expect(approve.status).toBe(200);
       expect(await inbox(as.Priya, 'lead_assigned')).toEqual([
         expect.objectContaining({
-          title: 'Meera Nair assigned Anil Sharma to you',
+          title: 'Meera Nair assigned Sharma Stores to you',
           link: `/leads/${lead.id}`,
           leadId: lead.id,
         }),
@@ -414,7 +417,7 @@ describe('Lead collaboration (e2e)', () => {
       expect(await inbox(as.Priya, 'transfer_decided')).toEqual([]);
       expect(await inbox(as.Ravi, 'transfer_decided')).toEqual([
         expect.objectContaining({
-          title: 'Meera Nair approved the handover of Anil Sharma to Priya Desai',
+          title: 'Meera Nair approved the handover of Sharma Stores to Priya Desai',
           link: `/leads/${lead.id}`,
         }),
       ]);
@@ -426,7 +429,7 @@ describe('Lead collaboration (e2e)', () => {
     });
 
     it('a rejection tells the requester', async () => {
-      const other = await addLead(as.Ravi, { name: 'Bina Joshi' });
+      const other = await addLead(as.Ravi, { businessName: 'Bina Joshi' });
       const req = await as.Ravi.post(`/leads/${other.id}/transfers`, {
         toUserId: ids.Priya,
         reason: 'Too far for me.',
@@ -489,7 +492,7 @@ describe('Lead collaboration (e2e)', () => {
     let wanted: any;
 
     beforeAll(async () => {
-      wanted = await addLead(as.Ravi, { name: 'Chetan Mehta' });
+      wanted = await addLead(as.Ravi, { businessName: 'Chetan Mehta' });
     });
 
     it('offers the request when adding a number someone else owns', async () => {

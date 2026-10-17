@@ -36,7 +36,22 @@ import {
 
 /** Column names an admin is likely to use, matched without case, spaces or dashes. */
 const COLUMN_ALIASES = {
-  name: ['name', 'client', 'client_name', 'lead', 'lead_name', 'full_name', 'customer'],
+  // The person at the business (owner or manager), when known. Not `owner`: that is
+  // ownerEmail, the team member who gets the lead.
+  name: [
+    'name',
+    'client',
+    'client_name',
+    'lead',
+    'lead_name',
+    'full_name',
+    'customer',
+    'owner_name',
+    'manager_name',
+    'contact_name',
+    'contact_person',
+    'person',
+  ],
   phone: [
     'phone',
     'mobile',
@@ -46,7 +61,20 @@ const COLUMN_ALIASES = {
     'contact_number',
     'whatsapp',
   ],
-  businessName: ['business_name', 'business', 'company', 'shop', 'shop_name', 'firm'],
+  businessName: [
+    'business_name',
+    'business',
+    'company',
+    'company_name',
+    'shop',
+    'shop_name',
+    'store',
+    'store_name',
+    'outlet',
+    'outlet_name',
+    'firm',
+    'brand',
+  ],
   location: ['location', 'area', 'locality', 'city'],
   notes: ['notes', 'note', 'remarks', 'comments'],
   ownerEmail: ['owner_email', 'owner', 'assigned_to', 'assign_to', 'sales_person_email'],
@@ -65,9 +93,9 @@ interface Member {
 
 interface ReadyRow {
   row: number;
-  name: string;
+  name: string | null;
   phone: string;
-  businessName: string | null;
+  businessName: string;
   notes: string | null;
   location: string;
   /** Null until the even split hands one out. */
@@ -118,9 +146,6 @@ export class LeadsImportService {
       ? new Map<number, Member>()
       : this.readAssignments(dto.assignments, members);
     const dryRun = dto.dryRun === true;
-    // Owners picked on screen: a review checks the file before anyone is picked, and the
-    // import that follows must then cover every row (refused as a whole otherwise).
-    const ownerLater = !single && (dto.review === true || dto.assignments !== undefined);
     const defaultLocation = dto.defaultLocation ? this.tryLocation(dto.defaultLocation) : null;
 
     const problems: ImportProblemDto[] = [];
@@ -147,23 +172,27 @@ export class LeadsImportService {
 
     body.forEach((record, index) => {
       const row = index + 2;
-      const name = cell(record, 'name');
+      const name = cell(record, 'name') || null;
       const rawPhone = cell(record, 'phone');
       const phone = normaliseIndianMobile(rawPhone);
-      const businessName = cell(record, 'businessName') || null;
+      const businessName = cell(record, 'businessName');
       const notes = (record[columns.notes ?? -1] ?? '').trim() || null;
       let ownerEmail = single ? '' : cell(record, 'ownerEmail').toLowerCase();
-      const label = { name: name || '(no name)', phone: rawPhone };
+      // How the report names the row: its business, else whoever is named.
+      const title = businessName || name || '(no name)';
+      const label = { name: title, phone: rawPhone };
 
-      if (!name) return fail('invalid', row, label.name, label.phone, IMPORT_ERROR.ROW_NAME);
+      if (!businessName) {
+        return fail('invalid', row, label.name, label.phone, IMPORT_ERROR.ROW_BUSINESS_NAME);
+      }
       if (!phone) return fail('invalid', row, label.name, label.phone, IMPORT_ERROR.ROW_PHONE);
       if (
-        name.length > 120 ||
-        (businessName?.length ?? 0) > 160 ||
+        (name?.length ?? 0) > BUSINESS_RULE.NAME_MAX_LENGTH ||
+        businessName.length > BUSINESS_RULE.BUSINESS_NAME_MAX_LENGTH ||
         (notes?.length ?? 0) > 2000 ||
         ownerEmail.length > MAX_EMAIL
       ) {
-        return fail('invalid', row, name, phone, IMPORT_ERROR.ROW_LONG);
+        return fail('invalid', row, title, phone, IMPORT_ERROR.ROW_LONG);
       }
 
       const typed = cell(record, 'location');
@@ -172,24 +201,18 @@ export class LeadsImportService {
         return fail(
           'invalid',
           row,
-          name,
+          title,
           phone,
           typed ? LOCATION_ERROR.LENGTH : IMPORT_ERROR.ROW_NO_LOCATION,
         );
       }
 
-      if (ownerEmail && !byEmail.has(ownerEmail)) {
-        // Someone picks the owner on screen instead, so the unknown email doesn't matter.
-        if (ownerLater || assigned.has(row)) ownerEmail = '';
-        else return fail('invalid', row, name, phone, IMPORT_ERROR.ROW_OWNER_UNKNOWN);
-      }
-      if (!single && !assigned.has(row) && !ownerEmail && chosen.length === 0 && !ownerLater) {
-        return fail('invalid', row, name, phone, IMPORT_ERROR.ROW_NO_OWNER);
-      }
+      // An owner_email no one on the team has: the lead goes in unassigned, for later.
+      if (ownerEmail && !byEmail.has(ownerEmail)) ownerEmail = '';
 
       const earlier = phonesInFile.get(phone);
       if (earlier !== undefined) {
-        return fail('duplicate', row, name, phone, IMPORT_ERROR.ROW_SAME_NUMBER(earlier));
+        return fail('duplicate', row, title, phone, IMPORT_ERROR.ROW_SAME_NUMBER(earlier));
       }
       phonesInFile.set(phone, row);
       checked.push({ row, name, phone, businessName, notes, location, owner: null, ownerEmail });
@@ -201,14 +224,14 @@ export class LeadsImportService {
       checked.map((r) => r.phone),
     );
     for (const candidate of checked) {
-      const owner = existing.get(candidate.phone);
-      if (owner) {
+      if (existing.has(candidate.phone)) {
+        const owner = existing.get(candidate.phone);
         fail(
           'duplicate',
           candidate.row,
-          candidate.name,
+          candidate.businessName,
           candidate.phone,
-          IMPORT_ERROR.ROW_ALREADY_LEAD(owner),
+          owner ? IMPORT_ERROR.ROW_ALREADY_LEAD(owner) : IMPORT_ERROR.ROW_ALREADY_UNASSIGNED,
         );
         continue;
       }
@@ -216,7 +239,8 @@ export class LeadsImportService {
     }
 
     // ---- owners: one person for all; else picked on screen, then the file's own column,
-    // then the rest shared evenly in file order
+    // then the rest shared evenly in file order. Whatever is left is added unassigned, for an
+    // admin to hand out later from the campaign's Not assigned leads.
     let turn = 0;
     for (const candidate of ready as Array<ReadyRow & { ownerEmail: string }>) {
       candidate.owner =
@@ -226,7 +250,6 @@ export class LeadsImportService {
           ? (byEmail.get(candidate.ownerEmail) ?? null)
           : (chosen[turn++ % chosen.length] ?? null));
     }
-    if (!dryRun && ready.some((r) => !r.owner)) throw this.bad(IMPORT_ERROR.UNASSIGNED);
 
     const counts = new Map<string, { member: Member; count: number }>();
     for (const r of ready) {
@@ -255,6 +278,7 @@ export class LeadsImportService {
       imported: dryRun ? 0 : ready.length,
       duplicates,
       invalid,
+      unassigned: ready.filter((r) => !r.owner).length,
       byOwner: [...counts.values()]
         .sort((a, b) => b.count - a.count || a.member.name.localeCompare(b.member.name))
         .map(({ member, count }) => ({ user: { id: member.id, name: member.name }, count })),
@@ -295,7 +319,7 @@ export class LeadsImportService {
       const at = names.findIndex((n) => (COLUMN_ALIASES[column] as readonly string[]).includes(n));
       if (at >= 0) found[column] = at;
     }
-    if (found.name === undefined || found.phone === undefined)
+    if (found.businessName === undefined || found.phone === undefined)
       throw this.bad(IMPORT_ERROR.MISSING_COLUMNS);
     return found;
   }
@@ -352,15 +376,19 @@ export class LeadsImportService {
     return out;
   }
 
-  private async existingPhones(projectId: string, phones: string[]): Promise<Map<string, string>> {
+  /** Phone → who owns it there; null for a lead still waiting to be assigned. */
+  private async existingPhones(
+    projectId: string,
+    phones: string[],
+  ): Promise<Map<string, string | null>> {
     if (phones.length === 0) return new Map();
     const rows = (await this.dataSource.query(
       `SELECT l.phone, u.name AS owner
          FROM ${SQL_TABLE.LEADS} l
-         JOIN ${SQL_TABLE.USERS} u ON u.id = l.owner_id
+         LEFT JOIN ${SQL_TABLE.USERS} u ON u.id = l.owner_id
         WHERE l.project_id = $1 AND l.deleted_at IS NULL AND l.phone = ANY($2::text[])`,
       [projectId, phones],
-    )) as Array<{ phone: string; owner: string }>;
+    )) as Array<{ phone: string; owner: string | null }>;
     return new Map(rows.map((row) => [row.phone, row.owner]));
   }
 
@@ -388,7 +416,7 @@ export class LeadsImportService {
         const leads = rows.map((row) => ({
           id: randomUUID(),
           projectId,
-          ownerId: row.owner!.id,
+          ownerId: row.owner?.id ?? null,
           name: row.name,
           businessName: row.businessName,
           phone: row.phone,

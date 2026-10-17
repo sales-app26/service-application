@@ -72,7 +72,7 @@ export class ImportLeadsDto {
 
   @ApiPropertyOptional({
     description:
-      '`true` with `dryRun`: rows without an owner yet are not problems; the admin assigns them after. Default `false`.',
+      '`true` with `dryRun`: list every importable row in `rows`, for assigning on screen. Rows no one gets are added unassigned either way. Default `false`.',
   })
   @IsOptional()
   @Transform(toBoolean)
@@ -95,7 +95,9 @@ export class ImportProblemDto {
   @ApiProperty({ enum: ['invalid', 'duplicate'] })
   kind: 'invalid' | 'duplicate';
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'The row’s business name, else the person’s name, else “(no name)”.',
+  })
   name: string;
 
   @ApiProperty()
@@ -109,14 +111,14 @@ export class ImportSampleDto {
   @ApiProperty()
   row: number;
 
-  @ApiProperty()
-  name: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The owner or manager, if given.' })
+  name: string | null;
 
   @ApiProperty({ description: '10 digits.' })
   phone: string;
 
-  @ApiProperty({ nullable: true, type: String })
-  businessName: string | null;
+  @ApiProperty()
+  businessName: string;
 
   @ApiProperty()
   location: string;
@@ -157,6 +159,12 @@ export class ImportResultDto {
 
   @ApiProperty({ description: 'Rows skipped because something in them is wrong.' })
   invalid: number;
+
+  @ApiProperty({
+    description:
+      'Importable rows no one gets yet: they are added unassigned, for an admin to hand out later.',
+  })
+  unassigned: number;
 
   @ApiProperty({ type: [OwnerCountDto], description: 'Who gets how many of the importable rows.' })
   byOwner: OwnerCountDto[];

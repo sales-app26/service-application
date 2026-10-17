@@ -77,14 +77,18 @@ export class LeadPresenter {
       nextFollowUpDate: lead.nextFollowUpDate,
       overdueDays: overdueDays(lead, today),
       location: { id: lead.location.id, name: lead.location.name },
-      owner: { id: lead.owner.id, name: lead.owner.name, isActive: lead.owner.isActive },
-      ownerTag: options.showOwnerTags
-        ? !lead.owner.isActive
-          ? LeadOwnerTag.OWNER_INACTIVE
-          : !ownerIsMember.has(lead.id)
-            ? LeadOwnerTag.OWNER_REMOVED
-            : null
+      // Null: not assigned yet.
+      owner: lead.owner
+        ? { id: lead.owner.id, name: lead.owner.name, isActive: lead.owner.isActive }
         : null,
+      ownerTag:
+        options.showOwnerTags && lead.owner
+          ? !lead.owner.isActive
+            ? LeadOwnerTag.OWNER_INACTIVE
+            : !ownerIsMember.has(lead.id)
+              ? LeadOwnerTag.OWNER_REMOVED
+              : null
+          : null,
       convertedAt: lead.convertedAt,
       ...dealSummary(lead),
       offer: lead.offerId ? (offerById.get(lead.offerId) ?? null) : null,

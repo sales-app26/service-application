@@ -50,6 +50,7 @@ describe('Team collaboration (e2e)', () => {
   const addLead = async (client: ApiClient, fields: Record<string, unknown> = {}) => {
     const res = await client.post(`/projects/${projects.North}/leads`, {
       name: 'Asha Patil',
+      businessName: 'Patil Sweets',
       phone: String((phone += 1)),
       location: 'Baner',
       status: 'contacted',

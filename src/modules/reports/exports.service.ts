@@ -9,6 +9,7 @@ import {
   ENTRY_TYPE_LABEL,
   ERROR_CODE,
   NO,
+  NOT_ASSIGNED,
   PLAN_LABEL,
   REASON_LABEL,
   REPORT_ERROR,
@@ -76,7 +77,7 @@ export class ExportsService {
               l.source, l.created_at, l.updated_at, l.last_activity_at, l.notes
          FROM ${SQL_TABLE.LEADS} l
          JOIN ${SQL_TABLE.PROJECTS} p ON p.id = l.project_id
-         JOIN ${SQL_TABLE.USERS} o ON o.id = l.owner_id
+         LEFT JOIN ${SQL_TABLE.USERS} o ON o.id = l.owner_id
          JOIN ${SQL_TABLE.LOCATIONS} loc ON loc.id = l.location_id
          LEFT JOIN ${SQL_TABLE.USERS} cb ON cb.id = l.converted_by
          LEFT JOIN ${SQL_TABLE.OFFERS} ofr ON ofr.id = l.offer_id
@@ -90,14 +91,14 @@ export class ExportsService {
     )) as Array<{
       id: string;
       project: string;
-      name: string;
+      name: string | null;
       business_name: string | null;
       phone: string;
       location: string;
       status: LeadStatus;
       next_follow_up_date: string | null;
-      owner: string;
-      owner_active: boolean;
+      owner: string | null;
+      owner_active: boolean | null;
       converted_at: Date | null;
       converted_by: string | null;
       deal_value: number | null;
@@ -155,8 +156,9 @@ export class ExportsService {
         row.location,
         STATUS_LABEL[row.status] ?? row.status,
         row.next_follow_up_date,
-        row.owner,
-        row.owner_active ? YES : NO,
+        // An unassigned lead: no owner, so no "owner active" answer either.
+        row.owner ?? NOT_ASSIGNED,
+        row.owner === null ? '' : row.owner_active ? YES : NO,
         formatIstDateTime(row.converted_at),
         row.converted_by,
         row.plan_code ? PLAN_LABEL[row.plan_code] : row.plan,
@@ -207,7 +209,7 @@ export class ExportsService {
       created_at: Date;
       updated_at: Date;
       project: string;
-      lead: string;
+      lead: string | null;
       business_name: string | null;
       phone: string;
       logged_by: string;

@@ -32,17 +32,20 @@ export class Lead {
   @JoinColumn({ name: 'project_id' })
   project: Project;
 
-  /** Changes only through an approved transfer. */
-  @Column({ name: 'owner_id', type: PG_TYPE.UUID })
-  ownerId: string;
+  /**
+   * Changes only through an approved transfer. Null: not assigned yet (a bulk upload left it
+   * for an admin to hand out); such a lead stays New until it is assigned.
+   */
+  @Column({ name: 'owner_id', type: PG_TYPE.UUID, nullable: true })
+  ownerId: string | null;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'owner_id' })
-  owner: User;
+  owner: User | null;
 
   /** @example Anil Sharma */
-  @Column({ name: 'name', type: PG_TYPE.TEXT })
-  name: string;
+  @Column({ name: 'name', type: PG_TYPE.TEXT, nullable: true })
+  name: string | null;
 
   /** @example Sharma General Stores */
   @Column({ name: 'business_name', type: PG_TYPE.TEXT, nullable: true })

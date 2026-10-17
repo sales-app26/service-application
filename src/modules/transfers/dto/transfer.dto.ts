@@ -24,8 +24,13 @@ export class TransferLeadRefDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
 
-  @ApiProperty({ example: 'Anil Sharma' })
-  name: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Anil Sharma',
+    description: 'The owner or manager, if known.',
+  })
+  name: string | null;
 
   @ApiPropertyOptional({ nullable: true, type: String })
   businessName: string | null;
@@ -44,8 +49,12 @@ export class TransferDto {
   @ApiProperty({ type: TransferLeadRefDto })
   lead: TransferLeadRefDto;
 
-  @ApiProperty({ type: PersonRefDto, description: 'Owner at the time of the request.' })
-  fromUser: PersonRefDto;
+  @ApiProperty({
+    type: PersonRefDto,
+    nullable: true,
+    description: 'Owner at the time of the request. Null: the lead was assigned from Not assigned.',
+  })
+  fromUser: PersonRefDto | null;
 
   @ApiProperty({ type: PersonRefDto })
   toUser: PersonRefDto;

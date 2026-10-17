@@ -116,7 +116,7 @@ export class LeadAccessService {
       where: { leadId: lead.id, fromUserId: actor.id, status: TransferStatus.APPROVED },
     });
 
-    if (handedOver && lead.ownerId !== actor.id) {
+    if (handedOver && lead.ownerId && lead.ownerId !== actor.id) {
       const owner = await users.findOne({ where: { id: lead.ownerId } });
       return new BusinessException(
         FOLLOW_UP_ERROR.LEAD_TRANSFERRED(owner?.name ?? 'a teammate'),

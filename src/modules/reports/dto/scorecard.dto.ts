@@ -205,8 +205,8 @@ export class ReviewWinDto {
   @ApiProperty({ format: 'uuid' })
   leadId: string;
 
-  @ApiProperty()
-  leadName: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The owner or manager, if known.' })
+  leadName: string | null;
 
   @ApiPropertyOptional({ nullable: true, type: String })
   businessName: string | null;
@@ -248,7 +248,7 @@ export class ReviewFeedbackDto {
   @ApiProperty({ format: 'uuid' })
   leadId: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The business name; the person’s name on older leads without one.' })
   leadName: string;
 
   @ApiPropertyOptional({ format: 'uuid', nullable: true, type: String })

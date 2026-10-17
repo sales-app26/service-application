@@ -72,10 +72,11 @@ interface UploadedPhoto {
   buffer: Buffer;
 }
 
-const SORT: Record<LeadSort, { column: string; direction: SortDirection }> = {
+const SORT: Record<LeadSort, { column: string; direction: SortDirection; then?: string }> = {
   updated: { column: 'l.updatedAt', direction: SORT_ORDER.DESC },
   created: { column: 'l.createdAt', direction: SORT_ORDER.DESC },
-  name: { column: 'l.name', direction: SORT_ORDER.ASC },
+  // By business name; older leads with only a person's name follow, by that name.
+  name: { column: 'l.businessName', direction: SORT_ORDER.ASC, then: 'l.name' },
   next_follow_up: { column: 'l.nextFollowUpDate', direction: SORT_ORDER.ASC },
   value: { column: 'l.dealValue', direction: SORT_ORDER.DESC },
   // Longest untouched first.
@@ -188,8 +189,8 @@ export class LeadsService {
           id: leadId,
           projectId,
           ownerId: actor.id,
-          name: dto.name,
-          businessName: dto.businessName ?? null,
+          name: dto.name ?? null,
+          businessName: dto.businessName,
           phone,
           locationId: location.id,
           notes: dto.notes ?? null,
@@ -285,9 +286,14 @@ export class LeadsService {
       qb.andWhere('l.owner_id = :ownerId', { ownerId: query.ownerId });
     }
 
+    if (isAdmin && query.unassigned) {
+      qb.andWhere('l.owner_id IS NULL');
+    }
+
     if (isAdmin && query.ownerUnavailable) {
+      // Unassigned leads have no owner to be unavailable; they have their own filter.
       qb.andWhere(
-        `(owner.is_active = false OR NOT EXISTS (
+        `l.owner_id IS NOT NULL AND (owner.is_active = false OR NOT EXISTS (
             SELECT 1 FROM ${SQL_TABLE.PROJECT_MEMBERS} pm
              WHERE pm.project_id = l.project_id AND pm.user_id = l.owner_id AND pm.is_active))`,
       );
@@ -318,7 +324,7 @@ export class LeadsService {
       qb.andWhere(
         new Brackets((inner) => {
           inner
-            .where('lower(l.name) LIKE :term', { term })
+            .where("lower(coalesce(l.name, '')) LIKE :term", { term })
             .orWhere("lower(coalesce(l.business_name, '')) LIKE :term", { term });
           if (digits) {
             inner.orWhere('l.phone LIKE :digits', { digits: `%${digits}%` });
@@ -328,10 +334,9 @@ export class LeadsService {
     }
 
     const sort = SORT[query.sort ?? 'updated'];
-    qb.orderBy(sort.column, sort.direction, 'NULLS LAST')
-      .addOrderBy('l.id', 'ASC')
-      .skip(query.skip)
-      .take(query.limit);
+    qb.orderBy(sort.column, sort.direction, 'NULLS LAST');
+    if (sort.then) qb.addOrderBy(sort.then, sort.direction, 'NULLS LAST');
+    qb.addOrderBy('l.id', 'ASC').skip(query.skip).take(query.limit);
 
     const [rows, total] = await qb.getManyAndCount();
     const items = await this.leadPresenter.summaries(rows, { showOwnerTags: isAdmin });
@@ -357,15 +362,18 @@ export class LeadsService {
         where: { leadId, status: TransferStatus.PENDING },
         relations: { toUser: true },
       }),
-      this.transfers.findOne({
-        where: {
-          leadId,
-          fromUserId: lead.ownerId,
-          status: In([TransferStatus.APPROVED, TransferStatus.REJECTED]),
-        },
-        relations: { toUser: true, decider: true },
-        order: { decidedAt: 'DESC' },
-      }),
+      // An unassigned lead has no owner's handover to show.
+      lead.ownerId
+        ? this.transfers.findOne({
+            where: {
+              leadId,
+              fromUserId: lead.ownerId,
+              status: In([TransferStatus.APPROVED, TransferStatus.REJECTED]),
+            },
+            relations: { toUser: true, decider: true },
+            order: { decidedAt: 'DESC' },
+          })
+        : Promise.resolve(null),
       lead.convertedBy
         ? this.users.findOne({ where: { id: lead.convertedBy } })
         : Promise.resolve(null),
@@ -393,7 +401,8 @@ export class LeadsService {
       pendingTransfer: pending ? toTransferRef(pending) : null,
       lastDecidedTransfer: lastDecided ? toTransferRef(lastDecided) : null,
       permissions: this.permissions(actor, lead, visibility, projectOpen, pending !== null),
-      coveringFor: visibility.isCovering ? { id: lead.owner.id, name: lead.owner.name } : null,
+      coveringFor:
+        visibility.isCovering && lead.owner ? { id: lead.owner.id, name: lead.owner.name } : null,
       ...comments,
     };
   }
@@ -467,7 +476,9 @@ export class LeadsService {
     const lead = await this.leadAccess.findLiveLead(leadId);
     const visibility = await this.leadAccess.assertVisible(actor, lead);
 
-    if (!visibility.isOwner || !visibility.isMember) {
+    // The owner edits; an unassigned lead, its admins (to tidy a sheet's typos before handing out).
+    const adminTidies = visibility.isAdmin && lead.ownerId === null;
+    if (!adminTidies && (!visibility.isOwner || !visibility.isMember)) {
       throw new ForbiddenBusinessException(LEAD_ERROR.ONLY_OWNER_EDITS);
     }
     this.access.assertWritable(lead.project);
@@ -487,8 +498,18 @@ export class LeadsService {
       await this.dataSource.transaction(async (manager) => {
         await this.access.lockOpenProject(manager, lead.projectId);
         const locked = await this.leadAccess.lockLead(manager, lead.id);
-        if (locked.ownerId !== actor.id) {
+        // Assigned meanwhile: it is the new owner's to edit now.
+        if (locked.ownerId !== actor.id && !(adminTidies && locked.ownerId === null)) {
           throw await this.leadAccess.notYoursError(actor, locked, manager);
+        }
+
+        // An older lead may have only a person's name; it can't lose that before it has a
+        // business name (the database refuses a lead with neither).
+        if (dto.name === null && !(dto.businessName ?? locked.businessName)) {
+          throw new BusinessException(
+            LEAD_ERROR.BUSINESS_NAME_REQUIRED,
+            ERROR_CODE.VALIDATION_FAILED,
+          );
         }
 
         const changes: Partial<Lead> = {};
@@ -634,6 +655,16 @@ export class LeadsService {
         leadId: existing.id,
       });
     }
+    // Waiting to be handed out: there is no owner to ask, so no request either.
+    if (!existing.owner) {
+      throw new BusinessException(
+        LEAD_ERROR.DUPLICATE_UNASSIGNED,
+        ERROR_CODE.DUPLICATE_LEAD_OTHER,
+        {
+          ownerName: null,
+        },
+      );
+    }
     // A member adding a lead can ask for this one instead (request-by-phone).
     throw new BusinessException(
       LEAD_ERROR.DUPLICATE_OTHER(existing.owner.name),
@@ -651,14 +682,17 @@ export class LeadsService {
   ): LeadPermissionsDto {
     const ownerWorks = visibility.isOwner && visibility.isMember;
     const covering = visibility.isCovering;
-    const canChangeStatus = projectOpen && (ownerWorks || visibility.isAdmin || covering);
+    // Not assigned yet: its admins can tidy it and assign it; nothing else happens on it.
+    const assigned = lead.ownerId !== null;
+    const canChangeStatus =
+      projectOpen && assigned && (ownerWorks || visibility.isAdmin || covering);
     const moderatorOwnsIt = actor.role === UserRole.MODERATOR && visibility.isOwner;
 
     return {
       canLogFollowUp: projectOpen && (ownerWorks || covering),
       canChangeStatus,
       canLeaveConverted: canChangeStatus && visibility.isAdmin,
-      canEdit: projectOpen && ownerWorks,
+      canEdit: projectOpen && (ownerWorks || (!assigned && visibility.isAdmin)),
       canRequestTransfer: projectOpen && ownerWorks && !hasPendingTransfer,
       canReassign: projectOpen && visibility.isAdmin && !moderatorOwnsIt,
       canDelete: actor.role === UserRole.SUPER_ADMIN,

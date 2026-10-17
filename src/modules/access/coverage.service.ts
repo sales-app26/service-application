@@ -28,14 +28,15 @@ export class CoverageService {
   /**
    * TRUE when `actorId` covers `ownerId` in `projectId` today (IST). Inside a
    * transaction pass its manager, so the check runs on the same connection.
+   * An unassigned lead (`ownerId` null) has no owner to cover for.
    */
   async covers(
     actorId: string,
-    ownerId: string,
+    ownerId: string | null,
     projectId: string,
     manager?: EntityManager,
   ): Promise<boolean> {
-    if (actorId === ownerId) return false;
+    if (!ownerId || actorId === ownerId) return false;
 
     const runner = manager ?? this.dataSource;
     const [row] = (await runner.query(

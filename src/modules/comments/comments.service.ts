@@ -18,7 +18,7 @@ import {
   ForbiddenBusinessException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
-import { istDateOf, isUniqueViolation } from '../../common/utils';
+import { istDateOf, isUniqueViolation, leadLabel } from '../../common/utils';
 import { FollowUp, Lead, LeadComment, ProjectMember, User } from '../../database/entities';
 import { CoverageService } from '../access/coverage.service';
 import { ProjectAccessService } from '../access/project-access.service';
@@ -127,7 +127,8 @@ export class CommentsService {
       assertMentionsAllowed(mentionIds, new Set(mentionable.map((person) => person.id)));
     }
 
-    const ownerSees = await this.leadAccess.canUserSee(lead.owner, lead);
+    // An unassigned lead has no owner to tell.
+    const ownerSees = lead.owner ? await this.leadAccess.canUserSee(lead.owner, lead) : false;
     const planned = planCommentNotifications({
       authorId: actor.id,
       mentionIds,
@@ -141,13 +142,13 @@ export class CommentsService {
       leadId: lead.id,
       body: dto.body,
       ...(notificationKind === NotificationKind.MENTION
-        ? { title: NOTIFICATION_TEXT.MENTION_TITLE(actor.name, lead.name), link }
+        ? { title: NOTIFICATION_TEXT.MENTION_TITLE(actor.name, leadLabel(lead)), link }
         : notificationKind === NotificationKind.FEEDBACK
           ? {
-              title: NOTIFICATION_TEXT.FEEDBACK_TITLE(actor.name, lead.name),
+              title: NOTIFICATION_TEXT.FEEDBACK_TITLE(actor.name, leadLabel(lead)),
               link: NOTIFICATION_LINK.DAY(istDateOf(entry!.createdAt)),
             }
-          : { title: NOTIFICATION_TEXT.COMMENT_TITLE(actor.name, lead.name), link }),
+          : { title: NOTIFICATION_TEXT.COMMENT_TITLE(actor.name, leadLabel(lead)), link }),
     }));
 
     const commentId = await this.dataSource.transaction(async (manager) => {
@@ -258,7 +259,7 @@ export class CommentsService {
           mentionIds.map((userId) => ({
             userId,
             kind: NotificationKind.HELP_REQUESTED,
-            title: NOTIFICATION_TEXT.HELP_REQUESTED_TITLE(actor.name, lead.name),
+            title: NOTIFICATION_TEXT.HELP_REQUESTED_TITLE(actor.name, leadLabel(lead)),
             body: dto.body,
             link: NOTIFICATION_LINK.LEAD(lead.id),
             leadId: lead.id,
@@ -308,7 +309,7 @@ export class CommentsService {
           {
             userId: comment.userId,
             kind: NotificationKind.HELP_RESOLVED,
-            title: NOTIFICATION_TEXT.HELP_RESOLVED_TITLE(actor.name, lead.name),
+            title: NOTIFICATION_TEXT.HELP_RESOLVED_TITLE(actor.name, leadLabel(lead)),
             link: NOTIFICATION_LINK.LEAD(lead.id),
             leadId: lead.id,
           },
@@ -359,12 +360,14 @@ export class CommentsService {
   }
 
   private async mentionablePeople(actor: AuthenticatedUser, lead: Lead): Promise<PersonRefDto[]> {
-    const ownerMembership = await this.members.findOne({
-      where: { projectId: lead.projectId, userId: lead.ownerId },
-    });
+    // An unassigned lead has no owner, so no backup covering for one: its admins only.
+    const ownerId = lead.ownerId;
+    const ownerMembership = ownerId
+      ? await this.members.findOne({ where: { projectId: lead.projectId, userId: ownerId } })
+      : null;
     const backupId = ownerMembership?.backupUserId ?? null;
     const coveringBackup =
-      backupId && (await this.coverage.covers(backupId, lead.ownerId, lead.projectId))
+      backupId && ownerId && (await this.coverage.covers(backupId, ownerId, lead.projectId))
         ? backupId
         : null;
 
@@ -374,7 +377,7 @@ export class CommentsService {
         WHERE u.is_active AND u.deleted_at IS NULL AND u.id <> $1
           AND EXISTS (SELECT 1 FROM ${SQL_TABLE.PROJECT_MEMBERS} pm
                        WHERE pm.project_id = $2 AND pm.user_id = u.id AND pm.is_active)
-          AND (u.id = $3 OR u.role = $4 OR u.id = $5::uuid)
+          AND (u.id = $3::uuid OR u.role = $4 OR u.id = $5::uuid)
         ORDER BY u.name`,
       [actor.id, lead.projectId, lead.ownerId, UserRole.MODERATOR, coveringBackup],
     )) as PersonRefDto[];

@@ -777,7 +777,7 @@ export class ScorecardService {
       [window.start, window.end, scope, userId],
     )) as Array<{
       id: string;
-      name: string;
+      name: string | null;
       business_name: string | null;
       project_name: string;
       plan: string | null;
@@ -802,7 +802,7 @@ export class ScorecardService {
     userId: string,
   ): Promise<{ count: number; recent: ReviewFeedbackDto[] }> {
     const rows = (await this.dataSource.query(
-      `SELECT c.id, c.body, c.created_at, c.lead_id, c.entry_id, l.name AS lead_name,
+      `SELECT c.id, c.body, c.created_at, c.lead_id, c.entry_id, coalesce(l.business_name, l.name) AS lead_name,
               a.id AS author_id, a.name AS author_name, count(*) OVER ()::int AS total
          FROM ${SQL_TABLE.LEAD_COMMENTS} c
          JOIN ${SQL_TABLE.FOLLOW_UPS} f ON f.id = c.entry_id AND f.deleted_at IS NULL

@@ -334,7 +334,7 @@ export class DashboardService {
       [weekStart, weekEnd, scope, userId],
     )) as Array<{
       id: string;
-      name: string;
+      name: string | null;
       business_name: string | null;
       phone: string;
       converted_at: Date;
@@ -706,7 +706,7 @@ export class DashboardService {
   ): Promise<ScoredAttention[]> {
     const cutoff = new Date(now.getTime() - BUSINESS_RULE.ATTENTION_STALE_TRANSFER_HOURS * HOUR_MS);
     const rows = (await this.dataSource.query(
-      `SELECT t.created_at, l.name AS lead_name, p.name AS project_name,
+      `SELECT t.created_at, coalesce(l.business_name, l.name) AS lead_name, p.name AS project_name,
               fu.id AS from_id, fu.name AS from_name, tu.name AS to_name
          FROM ${SQL_TABLE.LEAD_TRANSFERS} t
          JOIN ${SQL_TABLE.LEADS} l ON l.id = t.lead_id AND l.deleted_at IS NULL
@@ -754,7 +754,7 @@ export class DashboardService {
     now: Date,
   ): Promise<ScoredAttention[]> {
     const rows = (await this.dataSource.query(
-      `SELECT c.created_at, c.lead_id, l.name AS lead_name, p.name AS project_name,
+      `SELECT c.created_at, c.lead_id, coalesce(l.business_name, l.name) AS lead_name, p.name AS project_name,
               u.id AS user_id, u.name AS user_name
          FROM ${SQL_TABLE.LEAD_COMMENTS} c
          JOIN ${SQL_TABLE.LEADS} l ON l.id = c.lead_id AND l.deleted_at IS NULL

@@ -37,7 +37,7 @@ describe('Delete a user (e2e)', () => {
     projectId = project.body.data.id;
     for (const id of [ids.meera, ids.ravi])
       await admin.post(`/projects/${projectId}/members`, { userId: id });
-    const csv = 'name,phone,location\nA,9876500001,Pune\nB,9876500002,Pune\n';
+    const csv = 'business_name,phone,location\nA,9876500001,Pune\nB,9876500002,Pune\n';
     const res = await admin.postForm(
       `/projects/${projectId}/leads/import`,
       { ownerId: ids.ravi },

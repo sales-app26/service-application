@@ -73,10 +73,20 @@ export class LeadSummaryDto {
   @ApiProperty({ format: 'uuid' })
   projectId: string;
 
-  @ApiProperty({ example: 'Anil Sharma' })
-  name: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Anil Sharma',
+    description: 'The owner or manager, when known. Null on many leads.',
+  })
+  name: string | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, example: 'Sharma General Stores' })
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Sharma General Stores',
+    description: 'Required on every new lead; null only on older leads saved before that.',
+  })
   businessName: string | null;
 
   @ApiProperty({ example: SWAGGER_EXAMPLE.PHONE })
@@ -98,8 +108,12 @@ export class LeadSummaryDto {
   @ApiProperty({ type: LocationRefDto })
   location: LocationRefDto;
 
-  @ApiProperty({ type: LeadOwnerDto })
-  owner: LeadOwnerDto;
+  @ApiProperty({
+    type: LeadOwnerDto,
+    nullable: true,
+    description: 'Null: not assigned yet (left by a bulk upload for an admin to hand out).',
+  })
+  owner: LeadOwnerDto | null;
 
   @ApiPropertyOptional({
     enum: LeadOwnerTag,
@@ -312,20 +326,20 @@ export class LeadDetailDto extends LeadSummaryDto {
 
 /** A new lead and its first follow-up, in one form (PRD §5.5). */
 export class CreateLeadDto extends LogFollowUpDto {
-  @ApiProperty({ example: 'Anil Sharma' })
-  @Transform(trimString)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(BUSINESS_RULE.NAME_MAX_LENGTH)
-  name: string;
-
-  @ApiPropertyOptional({ example: 'Sharma General Stores' })
+  @ApiPropertyOptional({ example: 'Anil Sharma', description: 'The owner or manager, if known.' })
   @IsOptional()
   @Transform(trimToNull)
   @ValidateIf((_, value) => value !== null)
   @IsString()
+  @MaxLength(BUSINESS_RULE.NAME_MAX_LENGTH)
+  name?: string | null;
+
+  @ApiProperty({ example: 'Sharma General Stores' })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
   @MaxLength(BUSINESS_RULE.BUSINESS_NAME_MAX_LENGTH)
-  businessName?: string | null;
+  businessName: string;
 
   @ApiProperty({
     example: '+91 98765-43210',
@@ -360,21 +374,22 @@ export class CreateLeadDto extends LogFollowUpDto {
  * (fields left out are cleared); all of them null clears it.
  */
 export class UpdateLeadDto extends DealFieldsDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(trimString)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(BUSINESS_RULE.NAME_MAX_LENGTH)
-  name?: string;
-
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({ nullable: true, description: 'The owner or manager; empty clears it.' })
   @IsOptional()
   @Transform(trimToNull)
   @ValidateIf((_, value) => value !== null)
   @IsString()
+  @MaxLength(BUSINESS_RULE.NAME_MAX_LENGTH)
+  name?: string | null;
+
+  @ApiPropertyOptional({ description: 'Can be changed, never cleared.' })
+  // Not @IsOptional: that would let null through, and null would clear it.
+  @ValidateIf((_, value) => value !== undefined)
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
   @MaxLength(BUSINESS_RULE.BUSINESS_NAME_MAX_LENGTH)
-  businessName?: string | null;
+  businessName?: string;
 
   @ApiPropertyOptional({ description: 'Checked again for duplicates in the project.' })
   @IsOptional()
@@ -448,6 +463,14 @@ export class ListLeadsQueryDto extends PaginationQueryDto {
   @Transform(toBoolean)
   @IsBoolean()
   ownerUnavailable?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Admins: only leads not assigned to anyone yet (left by a bulk upload).',
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  unassigned?: boolean;
 
   @ApiPropertyOptional({
     enum: LeadDue,
