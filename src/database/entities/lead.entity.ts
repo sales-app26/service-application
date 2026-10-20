@@ -51,9 +51,12 @@ export class Lead {
   @Column({ name: 'business_name', type: PG_TYPE.TEXT, nullable: true })
   businessName: string | null;
 
-  /** 10 digits, so duplicates are caught. @example 9876543210 */
-  @Column({ name: 'phone', type: PG_TYPE.TEXT })
-  phone: string;
+  /**
+   * 10 digits, so duplicates are caught. Null when a sheet listed the business with no number
+   * yet; a lead added by hand always has one. @example 9876543210
+   */
+  @Column({ name: 'phone', type: PG_TYPE.TEXT, nullable: true })
+  phone: string | null;
 
   @Column({ name: 'location_id', type: PG_TYPE.UUID })
   locationId: string;

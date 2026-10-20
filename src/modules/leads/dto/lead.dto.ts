@@ -89,8 +89,13 @@ export class LeadSummaryDto {
   })
   businessName: string | null;
 
-  @ApiProperty({ example: SWAGGER_EXAMPLE.PHONE })
-  phone: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: SWAGGER_EXAMPLE.PHONE,
+    description: 'Null when the lead came from a sheet with no number; one can be added later.',
+  })
+  phone: string | null;
 
   @ApiProperty({ enum: LeadStatus })
   status: LeadStatus;

@@ -336,7 +336,7 @@ export class DashboardService {
       id: string;
       name: string | null;
       business_name: string | null;
-      phone: string;
+      phone: string | null;
       converted_at: Date;
       project_name: string;
       converted_by_id: string;

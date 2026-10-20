@@ -161,3 +161,28 @@ export class ListProjectsQueryDto extends PaginationQueryDto {
   @IsEnum(ProjectType)
   type?: ProjectType;
 }
+
+/** Deleting a campaign for good: its name, typed again. */
+export class DeleteProjectDto {
+  @ApiProperty({
+    description:
+      'The campaign’s name, typed again to confirm. Compared ignoring case and extra spaces.',
+    example: 'Pune Retail Drive',
+  })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  confirmName: string;
+}
+
+export class ProjectDeletedDto {
+  @ApiProperty({ description: 'Leads erased, including any that were already deleted.' })
+  leads: number;
+
+  @ApiProperty({ description: 'Follow-ups and visits erased.' })
+  followUps: number;
+
+  @ApiProperty({ description: 'Files removed from storage: picture, visit photos, documents.' })
+  files: number;
+}

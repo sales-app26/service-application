@@ -48,7 +48,9 @@ import {
 } from './dto/member.dto';
 import {
   CreateProjectDto,
+  DeleteProjectDto,
   ListProjectsQueryDto,
+  ProjectDeletedDto,
   ProjectDto,
   UpdateProjectDto,
 } from './dto/project.dto';
@@ -199,6 +201,20 @@ export class ProjectsController {
     @Param() params: UuidParamDto,
   ): Promise<ProjectDto> {
     return this.projectsService.reopen(actor, params.id);
+  }
+
+  @Post(`${ROUTE.ID_PARAM}/delete`)
+  @Roles(UserRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(SUCCESS_MESSAGE.PROJECT_DELETED)
+  @ApiOperation({
+    summary: 'Delete a project for good (Super Admin)',
+    description:
+      'Cannot be undone. `confirmName` must match the project’s name (ignoring case and extra spaces). Erases its leads, follow-ups and visits, comments, transfers and notifications about them, locations, team and targets, ready messages, its own training items with everyone’s progress and practice pitches on them, and its certifications. Its picture, visit photos and its own training documents are removed from storage. People, offers and library courses stay; only the project’s link to a library course goes. Works on an active or a closed project.',
+  })
+  @ApiOkEnvelope(ProjectDeletedDto)
+  remove(@Param() params: UuidParamDto, @Body() dto: DeleteProjectDto): Promise<ProjectDeletedDto> {
+    return this.projectsService.remove(params.id, dto.confirmName);
   }
 
   // ------------------------------------------------------------------- members

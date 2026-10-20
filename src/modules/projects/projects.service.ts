@@ -18,7 +18,7 @@ import {
   BusinessException,
   ConflictBusinessException,
 } from '../../common/exceptions/business.exception';
-import { escapeLike, istToday } from '../../common/utils';
+import { collapseWhitespace, escapeLike, istToday } from '../../common/utils';
 import { Project, ProjectMember } from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
 import { ImageService } from '../media/image.service';
@@ -27,6 +27,7 @@ import { TransferRejectionsService } from '../transfers/transfer-rejections.serv
 import {
   CreateProjectDto,
   ListProjectsQueryDto,
+  ProjectDeletedDto,
   ProjectDto,
   UpdateProjectDto,
 } from './dto/project.dto';
@@ -35,6 +36,9 @@ interface UploadedImage {
   buffer: Buffer;
 }
 
+/** Storage removes paths in batches; Supabase caps one request at 1,000. */
+const STORAGE_REMOVE_CHUNK = 500;
+
 interface ProjectRowStats {
   memberCount: number;
   leadCount: number;
@@ -42,10 +46,10 @@ interface ProjectRowStats {
 }
 
 /**
- * Projects (PRD §5.3). Only the Super Admin creates, edits, closes and reopens
- * them; nothing is ever deleted. Closing makes a project read-only and
- * rejects its pending transfers; reopening brings members and targets back as
- * they were.
+ * Projects (PRD §5.3). Only the Super Admin creates, edits, closes, reopens and
+ * deletes them. Closing makes a project read-only and rejects its pending
+ * transfers; reopening brings members and targets back as they were. Deleting
+ * erases the project and everything in it, for good (admin request after the PRD).
  */
 @Injectable()
 export class ProjectsService {
@@ -236,6 +240,79 @@ export class ProjectsService {
     project.closedAt = null;
     const [result] = await this.toDtos([await this.projects.save(project)], actor);
     return result;
+  }
+
+  /**
+   * Erases a project and everything in it, for good, once its name is typed again:
+   * leads and their follow-ups, visits, comments, transfers and notifications; its
+   * locations, team and targets, ready messages, its own training items with everyone's
+   * progress and practice pitches on them, and its certifications. Shared things stay:
+   * people, offers, and library courses (only the project's link to them goes).
+   *
+   * Its files (picture, visit photos, its own training documents) are removed from storage
+   * after the database commits, so a storage failure can only leave an unused file behind,
+   * never a record pointing at a missing one.
+   */
+  async remove(projectId: string, confirmName: string): Promise<ProjectDeletedDto> {
+    const project = await this.access.findProjectOrFail(projectId);
+    const typed = collapseWhitespace(confirmName).toLowerCase();
+    if (typed !== collapseWhitespace(project.name).toLowerCase()) {
+      throw new BusinessException(PROJECT_ERROR.DELETE_NAME_MISMATCH, ERROR_CODE.VALIDATION_FAILED);
+    }
+
+    const T = SQL_TABLE;
+    const result = await this.dataSource.transaction(async (manager) => {
+      // Waits for any write that holds the project (they lock it FOR SHARE), and keeps
+      // new ones out until the project is gone.
+      await manager.query(`SELECT id FROM ${T.PROJECTS} WHERE id = $1 FOR UPDATE`, [projectId]);
+
+      const [counts] = (await manager.query(
+        `SELECT (SELECT count(*) FROM ${T.LEADS} WHERE project_id = $1)::int AS leads,
+                (SELECT count(*) FROM ${T.FOLLOW_UPS} WHERE project_id = $1)::int AS "followUps"`,
+        [projectId],
+      )) as Array<{ leads: number; followUps: number }>;
+      const files = (
+        (await manager.query(
+          `SELECT photo_path AS path FROM ${T.FOLLOW_UPS}
+            WHERE project_id = $1 AND photo_path IS NOT NULL
+           UNION
+           SELECT file_path FROM ${T.TRAINING_ITEMS}
+            WHERE project_id = $1 AND file_path IS NOT NULL`,
+          [projectId],
+        )) as Array<{ path: string }>
+      ).map((row) => row.path);
+
+      const leads = `SELECT id FROM ${T.LEADS} WHERE project_id = $1`;
+      const items = `SELECT id FROM ${T.TRAINING_ITEMS} WHERE project_id = $1`;
+      // Children before parents. Notifications point at leads without a foreign key.
+      for (const sql of [
+        `DELETE FROM ${T.NOTIFICATIONS}
+          WHERE lead_id IN (${leads}) OR link LIKE '%' || $1::text || '%'`,
+        `DELETE FROM ${T.LEAD_COMMENTS} WHERE project_id = $1`,
+        `DELETE FROM ${T.LEAD_TRANSFERS} WHERE lead_id IN (${leads})`,
+        `DELETE FROM ${T.FOLLOW_UPS} WHERE project_id = $1`,
+        `DELETE FROM ${T.LEADS} WHERE project_id = $1`,
+        `DELETE FROM ${T.LOCATIONS} WHERE project_id = $1`,
+        `DELETE FROM ${T.MESSAGE_TEMPLATES} WHERE project_id = $1`,
+        `DELETE FROM ${T.ROLEPLAY_SESSIONS} WHERE project_id = $1 OR item_id IN (${items})`,
+        `DELETE FROM ${T.TRAINING_PROGRESS} WHERE item_id IN (${items})`,
+        `DELETE FROM ${T.TRAINING_ITEMS} WHERE project_id = $1`,
+        `DELETE FROM ${T.PROJECT_COURSES} WHERE project_id = $1`,
+        `DELETE FROM ${T.TRAINING_CERTIFICATIONS} WHERE project_id = $1`,
+        `DELETE FROM ${T.PROJECT_MEMBERS} WHERE project_id = $1`,
+        `DELETE FROM ${T.PROJECTS} WHERE id = $1`,
+      ]) {
+        await manager.query(sql, [projectId]);
+      }
+
+      if (project.imagePath) files.push(project.imagePath);
+      return { ...counts, files };
+    });
+
+    for (let i = 0; i < result.files.length; i += STORAGE_REMOVE_CHUNK) {
+      await this.storage.removeObjects(result.files.slice(i, i + STORAGE_REMOVE_CHUNK));
+    }
+    return { leads: result.leads, followUps: result.followUps, files: result.files.length };
   }
 
   // ------------------------------------------------------------------ helpers

@@ -91,10 +91,18 @@ interface Member {
   email: string;
 }
 
+/**
+ * How a row with no phone is told apart: its business at its location, ignoring case.
+ * Both already have their spaces collapsed; existingBusinesses builds the same key in SQL.
+ */
+const businessKey = (businessName: string, location: string): string =>
+  `${businessName.toLowerCase()}\n${location.toLowerCase()}`;
+
 interface ReadyRow {
   row: number;
   name: string | null;
-  phone: string;
+  /** Null when the sheet left it empty. */
+  phone: string | null;
   businessName: string;
   notes: string | null;
   location: string;
@@ -114,6 +122,9 @@ interface ReadyRow {
  * run does everything except the final insert, so the admin sees the same report
  * before committing. Running the same file twice is harmless: the second run finds
  * every phone already a lead and imports nothing.
+ *
+ * The phone is optional: a row with no number goes in without one, and it is matched on
+ * its business name and location instead, so the second run skips it too.
  */
 @Injectable()
 export class LeadsImportService {
@@ -168,13 +179,15 @@ export class LeadsImportService {
     const cell = (record: string[], column: Column): string =>
       collapseWhitespace(record[columns[column] ?? -1] ?? '');
     const phonesInFile = new Map<string, number>();
+    const businessesInFile = new Map<string, number>();
     const checked: Array<ReadyRow & { ownerEmail: string }> = [];
 
     body.forEach((record, index) => {
       const row = index + 2;
       const name = cell(record, 'name') || null;
       const rawPhone = cell(record, 'phone');
-      const phone = normaliseIndianMobile(rawPhone);
+      // An empty cell is fine: the lead goes in without a number. A filled one must be valid.
+      const phone = rawPhone ? normaliseIndianMobile(rawPhone) : null;
       const businessName = cell(record, 'businessName');
       const notes = (record[columns.notes ?? -1] ?? '').trim() || null;
       let ownerEmail = single ? '' : cell(record, 'ownerEmail').toLowerCase();
@@ -185,14 +198,16 @@ export class LeadsImportService {
       if (!businessName) {
         return fail('invalid', row, label.name, label.phone, IMPORT_ERROR.ROW_BUSINESS_NAME);
       }
-      if (!phone) return fail('invalid', row, label.name, label.phone, IMPORT_ERROR.ROW_PHONE);
+      if (rawPhone && !phone) {
+        return fail('invalid', row, label.name, label.phone, IMPORT_ERROR.ROW_PHONE);
+      }
       if (
         (name?.length ?? 0) > BUSINESS_RULE.NAME_MAX_LENGTH ||
         businessName.length > BUSINESS_RULE.BUSINESS_NAME_MAX_LENGTH ||
         (notes?.length ?? 0) > 2000 ||
         ownerEmail.length > MAX_EMAIL
       ) {
-        return fail('invalid', row, title, phone, IMPORT_ERROR.ROW_LONG);
+        return fail('invalid', row, title, phone ?? '', IMPORT_ERROR.ROW_LONG);
       }
 
       const typed = cell(record, 'location');
@@ -202,7 +217,7 @@ export class LeadsImportService {
           'invalid',
           row,
           title,
-          phone,
+          phone ?? '',
           typed ? LOCATION_ERROR.LENGTH : IMPORT_ERROR.ROW_NO_LOCATION,
         );
       }
@@ -210,21 +225,35 @@ export class LeadsImportService {
       // An owner_email no one on the team has: the lead goes in unassigned, for later.
       if (ownerEmail && !byEmail.has(ownerEmail)) ownerEmail = '';
 
-      const earlier = phonesInFile.get(phone);
-      if (earlier !== undefined) {
-        return fail('duplicate', row, title, phone, IMPORT_ERROR.ROW_SAME_NUMBER(earlier));
+      const business = businessKey(businessName, location);
+      if (phone) {
+        const earlier = phonesInFile.get(phone);
+        if (earlier !== undefined) {
+          return fail('duplicate', row, title, phone, IMPORT_ERROR.ROW_SAME_NUMBER(earlier));
+        }
+        phonesInFile.set(phone, row);
+      } else {
+        // No number to match on: the business at that location stands in for it.
+        const earlier = businessesInFile.get(business);
+        if (earlier !== undefined) {
+          return fail('duplicate', row, title, '', IMPORT_ERROR.ROW_SAME_BUSINESS(earlier));
+        }
       }
-      phonesInFile.set(phone, row);
+      if (!businessesInFile.has(business)) businessesInFile.set(business, row);
       checked.push({ row, name, phone, businessName, notes, location, owner: null, ownerEmail });
     });
 
-    // ---- numbers that are already leads here
+    // ---- numbers (or, with no number, businesses) that are already leads here
     const existing = await this.existingPhones(
       projectId,
-      checked.map((r) => r.phone),
+      checked.flatMap((r) => (r.phone ? [r.phone] : [])),
+    );
+    const existingBusinesses = await this.existingBusinesses(
+      projectId,
+      checked.flatMap((r) => (r.phone ? [] : [businessKey(r.businessName, r.location)])),
     );
     for (const candidate of checked) {
-      if (existing.has(candidate.phone)) {
+      if (candidate.phone && existing.has(candidate.phone)) {
         const owner = existing.get(candidate.phone);
         fail(
           'duplicate',
@@ -232,6 +261,17 @@ export class LeadsImportService {
           candidate.businessName,
           candidate.phone,
           owner ? IMPORT_ERROR.ROW_ALREADY_LEAD(owner) : IMPORT_ERROR.ROW_ALREADY_UNASSIGNED,
+        );
+        continue;
+      }
+      const business = businessKey(candidate.businessName, candidate.location);
+      if (!candidate.phone && existingBusinesses.has(business)) {
+        fail(
+          'duplicate',
+          candidate.row,
+          candidate.businessName,
+          '',
+          IMPORT_ERROR.ROW_BUSINESS_ALREADY_LEAD(existingBusinesses.get(business) ?? null),
         );
         continue;
       }
@@ -319,8 +359,8 @@ export class LeadsImportService {
       const at = names.findIndex((n) => (COLUMN_ALIASES[column] as readonly string[]).includes(n));
       if (at >= 0) found[column] = at;
     }
-    if (found.businessName === undefined || found.phone === undefined)
-      throw this.bad(IMPORT_ERROR.MISSING_COLUMNS);
+    // Only the business is required; a sheet with no phone column adds leads without numbers.
+    if (found.businessName === undefined) throw this.bad(IMPORT_ERROR.MISSING_COLUMNS);
     return found;
   }
 
@@ -390,6 +430,32 @@ export class LeadsImportService {
       [projectId, phones],
     )) as Array<{ phone: string; owner: string | null }>;
     return new Map(rows.map((row) => [row.phone, row.owner]));
+  }
+
+  /**
+   * Business key (see businessKey) → who owns it there; null for a lead still waiting to be
+   * assigned. Any lead counts, with or without a number: a row with no phone naming a business
+   * already listed at that location is the same client.
+   */
+  private async existingBusinesses(
+    projectId: string,
+    keys: string[],
+  ): Promise<Map<string, string | null>> {
+    if (keys.length === 0) return new Map();
+    const rows = (await this.dataSource.query(
+      `SELECT k.key, u.name AS owner
+         FROM ${SQL_TABLE.LEADS} l
+         JOIN ${SQL_TABLE.LOCATIONS} loc ON loc.id = l.location_id
+         LEFT JOIN ${SQL_TABLE.USERS} u ON u.id = l.owner_id
+        CROSS JOIN LATERAL (
+          SELECT lower(regexp_replace(btrim(l.business_name), '\\s+', ' ', 'g'))
+                 || E'\\n' || lower(loc.name) AS key
+        ) k
+        WHERE l.project_id = $1 AND l.deleted_at IS NULL AND l.business_name IS NOT NULL
+          AND k.key = ANY($2::text[])`,
+      [projectId, [...new Set(keys)]],
+    )) as Array<{ key: string; owner: string | null }>;
+    return new Map(rows.map((row) => [row.key, row.owner]));
   }
 
   private async insert(

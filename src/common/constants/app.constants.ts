@@ -105,6 +105,7 @@ export const SUCCESS_MESSAGE = {
   RESET_LINK_CREATED: 'Reset link ready. Share it only with this person.',
   RESET_EMAIL_SENT: 'Reset email sent.',
   PROJECT_CLOSED: 'Campaign closed. It can still be viewed, but not changed.',
+  PROJECT_DELETED: 'Campaign deleted, with all its leads, visits and photos.',
   PROJECT_REOPENED: 'Campaign reopened.',
   MEMBER_ADDED: 'Added to the campaign team.',
   MEMBER_REMOVED: 'Removed from the campaign team.',

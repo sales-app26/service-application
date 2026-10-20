@@ -10,6 +10,7 @@ import { Training1792137600000 } from './1792137600000-Training';
 import { TrainingPlaylists1792224000000 } from './1792224000000-TrainingPlaylists';
 import { LeadBusinessName1792310400000 } from './1792310400000-LeadBusinessName';
 import { UnassignedLeads1792396800000 } from './1792396800000-UnassignedLeads';
+import { LeadPhoneOptional1792483200000 } from './1792483200000-LeadPhoneOptional';
 
 /** Every migration, in the order they apply. */
 export const MIGRATIONS = [
@@ -25,4 +26,5 @@ export const MIGRATIONS = [
   TrainingPlaylists1792224000000,
   LeadBusinessName1792310400000,
   UnassignedLeads1792396800000,
+  LeadPhoneOptional1792483200000,
 ];

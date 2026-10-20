@@ -402,8 +402,12 @@ export class ConversionDto {
   @ApiPropertyOptional({ nullable: true, type: String })
   businessName: string | null;
 
-  @ApiProperty({ description: 'To call the client and spot-check.' })
-  phone: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'To call the client and spot-check. Null if the lead has no number.',
+  })
+  phone: string | null;
 
   @ApiProperty()
   projectName: string;

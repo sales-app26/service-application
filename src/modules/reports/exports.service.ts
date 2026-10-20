@@ -93,7 +93,7 @@ export class ExportsService {
       project: string;
       name: string | null;
       business_name: string | null;
-      phone: string;
+      phone: string | null;
       location: string;
       status: LeadStatus;
       next_follow_up_date: string | null;
@@ -211,7 +211,7 @@ export class ExportsService {
       project: string;
       lead: string | null;
       business_name: string | null;
-      phone: string;
+      phone: string | null;
       logged_by: string;
       entry_type: EntryType;
       status: LeadStatus;

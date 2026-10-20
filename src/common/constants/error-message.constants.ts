@@ -117,6 +117,7 @@ export const PROJECT_ERROR = {
   IMAGE_TYPE: 'The campaign picture must be a JPG or PNG photo.',
   IMAGE_TOO_LARGE: 'The campaign picture must be 2 MB or smaller.',
   NO_IMAGE: 'This campaign has no picture.',
+  DELETE_NAME_MISMATCH: 'Type the campaign’s name exactly as it is to delete it.',
 } as const;
 
 export const MEMBER_ERROR = {
@@ -188,19 +189,26 @@ export const IMPORT_ERROR = {
   TOO_MANY_ROWS: 'A sheet can hold at most 1,000 leads. Split it and add the parts one by one.',
   NOT_CSV:
     'We couldn’t read this sheet. In Excel or Google Sheets, save it as “CSV (comma separated)” and try again.',
-  MISSING_COLUMNS: 'The top line of the sheet needs headings, including business_name and phone.',
+  MISSING_COLUMNS: 'The top line of the sheet needs headings, including business_name.',
   EMPTY: 'This sheet has no leads in it.',
   OWNER_NOT_MEMBER: 'Choose only people on this campaign’s team to get the leads.',
   ASSIGNMENTS_INVALID: 'We couldn’t read who gets which lead. Check the sheet and try again.',
   RACE: 'Someone added some of these numbers a moment ago. Check the sheet again.',
   ROW_BUSINESS_NAME: 'Business name is missing.',
-  ROW_PHONE: 'Phone must be a 10-digit Indian mobile number.',
+  ROW_PHONE: 'Phone must be a 10-digit Indian mobile number, or left empty.',
   ROW_NO_LOCATION: 'No location: fill one in, or pick a default location.',
   ROW_LONG: 'Some details are too long.',
   ROW_SAME_NUMBER: (line: number): string => `Same number as line ${line} of this sheet.`,
   ROW_ALREADY_LEAD: (owner: string): string =>
     `Already a lead in this campaign, owned by ${owner}.`,
   ROW_ALREADY_UNASSIGNED: 'Already a lead in this campaign, not assigned to anyone yet.',
+  // Rows with no phone are matched on business name and location instead.
+  ROW_SAME_BUSINESS: (line: number): string =>
+    `No phone, and the same business and location as line ${line} of this sheet.`,
+  ROW_BUSINESS_ALREADY_LEAD: (owner: string | null): string =>
+    owner
+      ? `No phone, and this business is already a lead at this location, owned by ${owner}.`
+      : 'No phone, and this business is already a lead at this location, not assigned to anyone yet.',
 } as const;
 
 export const LEAD_ERROR = {

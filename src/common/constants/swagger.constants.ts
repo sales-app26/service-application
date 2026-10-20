@@ -35,7 +35,8 @@ export const SWAGGER_TAG_DESCRIPTION: Record<string, string> = {
   [SWAGGER_TAG.PROJECTS]: 'Online and door-to-door projects. Closed, never deleted.',
   [SWAGGER_TAG.MEMBERS]: 'Who works in a project, and their conversion target.',
   [SWAGGER_TAG.LOCATIONS]: 'Per-project location autocomplete.',
-  [SWAGGER_TAG.LEADS]: 'Clients, one owner each, unique by phone within a project.',
+  [SWAGGER_TAG.LEADS]:
+    'Clients, one owner each (or none yet), unique by phone within a project when one is given.',
   [SWAGGER_TAG.ENTRIES]: 'Follow-ups and manual status changes — the lead history.',
   [SWAGGER_TAG.VISITS]: 'Live photo + GPS proof for door-to-door follow-ups.',
   [SWAGGER_TAG.TRANSFERS]: 'Handing a lead to another member, with approval.',

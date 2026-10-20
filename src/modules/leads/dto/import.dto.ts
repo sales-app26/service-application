@@ -100,7 +100,7 @@ export class ImportProblemDto {
   })
   name: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'As typed in the sheet; empty when the row has no phone.' })
   phone: string;
 
   @ApiProperty()
@@ -114,8 +114,12 @@ export class ImportSampleDto {
   @ApiProperty({ nullable: true, type: String, description: 'The owner or manager, if given.' })
   name: string | null;
 
-  @ApiProperty({ description: '10 digits.' })
-  phone: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: '10 digits; null when the row has none.',
+  })
+  phone: string | null;
 
   @ApiProperty()
   businessName: string;
@@ -153,7 +157,8 @@ export class ImportResultDto {
   imported: number;
 
   @ApiProperty({
-    description: 'Rows skipped because the phone is already a lead here, or repeats in the file.',
+    description:
+      'Rows skipped because the phone is already a lead here or repeats in the file (for a row with no phone: the same business at the same location).',
   })
   duplicates: number;
 

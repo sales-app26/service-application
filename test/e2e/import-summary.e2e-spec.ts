@@ -88,7 +88,7 @@ describe('Bulk import and person summary (e2e)', () => {
       ).toBe(404);
     });
 
-    it('refuses a missing file, a file with no business_name/phone columns, and an empty one', async () => {
+    it('refuses a missing file, a file with no business_name column, and an empty one', async () => {
       const none = await moderator.postForm(`/projects/${projectId}/leads/import`, {
         ownerIds: ids.ravi,
       });
@@ -99,7 +99,7 @@ describe('Bulk import and person summary (e2e)', () => {
         ownerIds: ids.ravi,
       });
       expect(noColumns.status).toBe(400);
-      expect(noColumns.body.message).toMatch(/business_name and phone/);
+      expect(noColumns.body.message).toMatch(/including business_name\./);
 
       // A person's name alone is no longer enough.
       const personOnly = await upload(moderator, projectId, 'name,phone\nAsha,9876543210\n', {
@@ -107,7 +107,7 @@ describe('Bulk import and person summary (e2e)', () => {
         defaultLocation: 'Pune',
       });
       expect(personOnly.status).toBe(400);
-      expect(personOnly.body.message).toMatch(/business_name and phone/);
+      expect(personOnly.body.message).toMatch(/including business_name\./);
 
       const empty = await upload(moderator, projectId, header, { ownerIds: ids.ravi });
       expect(empty.status).toBe(400);
@@ -464,6 +464,67 @@ describe('Bulk import and person summary (e2e)', () => {
   });
 
   // ----------------------------------------------------------------- summary
+
+  describe('import without a phone', () => {
+    it('a row with no phone goes in; it is matched on business and location instead', async () => {
+      const project = await admin.post('/projects', {
+        name: 'No Number Drive',
+        type: 'door_to_door',
+        startDate: '2026-09-01',
+      });
+      const id = project.body.data.id as string;
+
+      // No phone column at all; the second row is the first one typed differently.
+      const first = await upload(
+        admin,
+        id,
+        'business_name,location\nGanesh Bakery,Camp\nGanesh  bakery,camp\n',
+      );
+      expect(first.status).toBe(200);
+      expect(first.body.data).toMatchObject({
+        total: 2,
+        imported: 1,
+        duplicates: 1,
+        unassigned: 1,
+      });
+      expect(first.body.data.problems[0].reason).toBe(
+        'No phone, and the same business and location as line 2 of this sheet.',
+      );
+
+      const csv =
+        'business_name,phone,location\n' +
+        'Ganesh Bakery,,Camp\n' + // already a lead there
+        'Ganesh Bakery,,Kondhwa\n' + // same name in another area: a new lead
+        'Sweet Spot,9000000099,Camp\n' +
+        'Sweet Spot,,Camp\n' + // line 4 again, without its number
+        'Typo Cakes,12345,Camp\n'; // a phone that is filled in must still be valid
+      const res = await upload(admin, id, csv);
+      expect(res.body.data).toMatchObject({
+        total: 5,
+        imported: 2,
+        duplicates: 2,
+        invalid: 1,
+        unassigned: 2,
+      });
+      expect(res.body.data.problems.map((p: any) => [p.row, p.reason])).toEqual([
+        [
+          2,
+          'No phone, and this business is already a lead at this location, not assigned to anyone yet.',
+        ],
+        [5, 'No phone, and the same business and location as line 4 of this sheet.'],
+        [6, 'Phone must be a 10-digit Indian mobile number, or left empty.'],
+      ]);
+
+      const waiting = await admin.get(`/projects/${id}/leads?unassigned=true&limit=100`);
+      expect(
+        waiting.body.data.items.map((l: any) => [l.businessName, l.phone, l.location?.name]).sort(),
+      ).toEqual([
+        ['Ganesh Bakery', null, 'Camp'],
+        ['Ganesh Bakery', null, 'Kondhwa'],
+        ['Sweet Spot', '9000000099', 'Camp'],
+      ]);
+    });
+  });
 
   describe('summary', () => {
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());

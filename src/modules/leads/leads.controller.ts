@@ -123,11 +123,11 @@ export class LeadsController {
     description: [
       '`multipart/form-data`: `file` (CSV, up to 1,000 rows and 1 MB), and optionally `defaultLocation`, `ownerId` (one member gets every row), `ownerIds` (comma-separated member ids), `assignments` (JSON row → member id), `review` and `dryRun`.',
       '',
-      'Columns (first row, any order, case-insensitive): **business_name** and **phone** are required; `name` (the owner or manager), `location`, `notes` and `owner_email` are optional. Rows with an `owner_email` go to that member; the rest are shared evenly, in file order, among `ownerIds`. Rows that end up with no one (no `ownerIds`, or an `owner_email` no team member has) are added **unassigned**: only admins see them (`unassigned=true` on the leads list) until they are assigned with reassign. Rows with no `location` use `defaultLocation`.',
+      'Columns (first row, any order, case-insensitive): **business_name** is required; `phone`, `name` (the owner or manager), `location`, `notes` and `owner_email` are optional. A row with an empty phone is added without a number, and is matched on its business name and location instead, so a second upload skips it. Rows with an `owner_email` go to that member; the rest are shared evenly, in file order, among `ownerIds`. Rows that end up with no one (no `ownerIds`, or an `owner_email` no team member has) are added **unassigned**: only admins see them (`unassigned=true` on the leads list) until they are assigned with reassign. Rows with no `location` use `defaultLocation`.',
       '',
       'To assign on screen: send the file with `dryRun=true&review=true`, which lists every importable row in `rows` without needing owners; then send it again with `assignments`.',
       '',
-      'Imported leads start as New with no follow-up and no visit photo, with source `import`, added by the importing admin. Rows that cannot be imported (no business name, bad phone, a number already a lead here or repeated in the file) are skipped and listed; the others go in. `dryRun=true` returns the same report and changes nothing.',
+      'Imported leads start as New with no follow-up and no visit photo, with source `import`, added by the importing admin. Rows that cannot be imported (no business name, a phone that is filled in but not a valid mobile, a number already a lead here or repeated in the file, or with no phone, a business already listed at that location) are skipped and listed; the others go in. `dryRun=true` returns the same report and changes nothing.',
     ].join('\n'),
   })
   @ApiOkEnvelope(ImportResultDto)
