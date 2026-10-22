@@ -193,6 +193,12 @@ export const STORAGE_FOLDER = {
  * Reasons written on handovers the system rejects (or, for a deleted person,
  * makes) on someone's behalf. People read them on the handover card.
  */
+/** Open leads (unassigned leads a rep takes for themselves). */
+export const OPEN_LEAD = {
+  /** The reason on the handover record a rep's taking a lead leaves behind. */
+  CLAIM_REASON: 'Taken from Open leads',
+} as const;
+
 export const AUTO_REJECT_REASON = {
   USER_DEACTIVATED: 'Person left the team',
   USER_DELETED: 'Person removed from the app',

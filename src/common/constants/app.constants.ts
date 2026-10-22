@@ -111,6 +111,7 @@ export const SUCCESS_MESSAGE = {
   MEMBER_REMOVED: 'Removed from the campaign team.',
   TARGET_UPDATED: 'Target updated.',
   LEADS_IMPORTED: 'Leads added.',
+  LEAD_CLAIMED: 'The lead is yours now. It’s in My leads.',
   LEADS_IMPORT_CHECKED: 'Sheet checked. No leads added yet.',
   LEAD_CREATED: 'Lead saved.',
   FOLLOW_UP_LOGGED: 'Follow-up saved.',

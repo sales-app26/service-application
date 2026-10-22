@@ -12,6 +12,7 @@ import { LeadPresenter } from './lead.presenter';
 import { LeadsController } from './leads.controller';
 import { LeadsImportService } from './leads-import.service';
 import { LeadsService } from './leads.service';
+import { OpenLeadsService } from './open-leads.service';
 
 /**
  * Leads and their history. The presenters and lead access are exported for
@@ -23,6 +24,7 @@ import { LeadsService } from './leads.service';
   providers: [
     LeadsService,
     LeadsImportService,
+    OpenLeadsService,
     EntriesService,
     LeadAccessService,
     LeadStateService,

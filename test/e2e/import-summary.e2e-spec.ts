@@ -293,7 +293,7 @@ describe('Bulk import and person summary (e2e)', () => {
         clientRequestId: requestId(),
       });
       expect(again.status).toBe(409);
-      expect(again.body.message).toMatch(/waiting to be assigned/);
+      expect(again.body.message).toMatch(/waiting under Open leads/);
 
       // Assigned: it is Ravi's, he is told, and he works it as usual.
       const assigned = await moderator.post(`/projects/${projectId}/leads/reassign`, {

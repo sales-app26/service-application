@@ -222,7 +222,7 @@ export const LEAD_ERROR = {
   DUPLICATE_OTHER: (owner: string): string =>
     `This number is already a lead in this campaign, owned by ${owner}.`,
   DUPLICATE_UNASSIGNED:
-    'This number is already a lead in this campaign, waiting to be assigned. Ask a sales manager for it.',
+    'This number is already a lead in this campaign, waiting under Open leads. Take it from there.',
   /** The same rule caught at the last moment, when the owner's name is not at hand. */
   DUPLICATE_ANY: 'This number is already a lead in this campaign.',
   NOT_A_MEMBER: 'You aren’t on this campaign’s team.',
@@ -230,6 +230,9 @@ export const LEAD_ERROR = {
   ONLY_OWNER_EDITS: 'Only the lead’s owner can edit it.',
   OWNER_UNAVAILABLE:
     'The lead’s owner has left the team or this campaign. Assign the lead to someone first.',
+  /** Open leads: sales managers hand leads out instead. */
+  CLAIM_REPS_ONLY: 'Only sales reps take open leads. Assign it to someone instead.',
+  ALREADY_TAKEN: (owner: string): string => `${owner} has just taken this lead.`,
 } as const;
 
 export const FOLLOW_UP_ERROR = {

@@ -54,9 +54,11 @@ import {
   UpdateLeadDto,
 } from './dto/lead.dto';
 import { ImportLeadsDto, ImportResultDto } from './dto/import.dto';
+import { ClaimLeadResultDto, ListOpenLeadsQueryDto, OpenLeadDto } from './dto/open-lead.dto';
 import { EntriesService } from './entries.service';
 import { LeadsImportService } from './leads-import.service';
 import { LeadsService } from './leads.service';
+import { OpenLeadsService } from './open-leads.service';
 
 /** Multer ceiling for the raw camera upload; the phone compresses first (VP-7). */
 export const PHOTO_UPLOAD = FileInterceptor(UPLOAD_FIELD.PHOTO, {
@@ -109,7 +111,40 @@ export class LeadsController {
     private readonly leadsService: LeadsService,
     private readonly entriesService: EntriesService,
     private readonly importService: LeadsImportService,
+    private readonly openLeads: OpenLeadsService,
   ) {}
+
+  @Get(`${ROUTE.PROJECTS}/:id/${ROUTE.LEADS}/open`)
+  @ApiOperation({
+    summary: 'Open leads: unassigned leads anyone on the team can see',
+    description:
+      'Leads a bulk upload left with no owner, newest first, for reps to pick from. Shows the business, person, location, notes, source, who added it and when, and `hasPhone`; the number itself shows once the lead is taken. `search` matches the business, person or location.',
+  })
+  @ApiPaginatedEnvelope(OpenLeadDto)
+  listOpen(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+    @Query() query: ListOpenLeadsQueryDto,
+  ): Promise<PaginatedResponseDto<OpenLeadDto>> {
+    return this.openLeads.list(actor, params.id, query);
+  }
+
+  @Post(`${ROUTE.LEADS}/${ROUTE.ID_PARAM}/claim`)
+  @Roles(UserRole.SALES_PERSON)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(SUCCESS_MESSAGE.LEAD_CLAIMED)
+  @ApiOperation({
+    summary: 'Take an open lead (sales rep)',
+    description:
+      'For a sales rep on the lead’s campaign. The lead becomes theirs, recorded as an approved handover from no one. After that it moves only by handover; it never goes back to Open leads. Already taken by someone else: `409` naming them. Taken by the caller already: the same answer again. A closed campaign: `422`.',
+  })
+  @ApiOkEnvelope(ClaimLeadResultDto)
+  claim(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+  ): Promise<ClaimLeadResultDto> {
+    return this.openLeads.claim(actor, params.id);
+  }
 
   @Post(`${ROUTE.PROJECTS}/:id/${ROUTE.LEADS}/import`)
   @Roles(UserRole.SUPER_ADMIN, UserRole.MODERATOR)
