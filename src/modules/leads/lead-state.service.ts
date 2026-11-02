@@ -32,6 +32,8 @@ export class LeadStateService {
     const last = entries.at(-1);
     const status = last?.status ?? LeadStatus.NEW;
     const nextFollowUpDate = last && !isTerminal(last.status) ? last.nextFollowUpDate : null;
+    const nextFollowUpTime = nextFollowUpDate ? (last?.nextFollowUpTime ?? null) : null;
+    const nextFollowUpChannel = nextFollowUpDate ? (last?.nextFollowUpChannel ?? null) : null;
 
     let convertedAt: Date | null = null;
     let convertedBy: string | null = null;
@@ -61,6 +63,8 @@ export class LeadStateService {
       {
         status,
         nextFollowUpDate,
+        nextFollowUpTime,
+        nextFollowUpChannel,
         convertedAt,
         convertedBy,
         lastActivityAt: last?.createdAt ?? lead.createdAt,

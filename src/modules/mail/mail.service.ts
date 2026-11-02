@@ -38,19 +38,21 @@ export class MailService {
             heading: `Welcome${to.name ? `, ${to.name}` : ''}!`,
             body: `You've been added to the ${this.config.fromName} team. Choose a password to sign in and start working your leads.`,
             button: 'Choose a password',
+            note: 'The link doesn’t expire and works once. If you got more than one invite, use the newest.',
           }
         : {
             subject: `Reset your ${this.config.fromName} password`,
             heading: 'Reset your password',
             body: 'Someone asked to reset the password for this account. If it was you, choose a new one below. If not, you can ignore this email.',
             button: 'Choose a new password',
+            note: 'The link works once. If it has expired, ask for a new one.',
           };
 
     await this.send({
       to,
       subject: copy.subject,
-      html: layout(copy.heading, copy.body, copy.button, link),
-      text: `${copy.heading}\n\n${copy.body}\n\n${link}\n`,
+      html: layout(copy.heading, copy.body, copy.button, copy.note, link),
+      text: `${copy.heading}\n\n${copy.body}\n\n${link}\n\n${copy.note}\n`,
     });
   }
 
@@ -109,7 +111,7 @@ const escape = (s: string): string =>
  * The email in Pronttera's brand: the mark (a PNG the portal serves, since mail clients don't
  * show SVG), the wordmark, and the app's action blue.
  */
-function layout(heading: string, body: string, button: string, link: string): string {
+function layout(heading: string, body: string, button: string, note: string, link: string): string {
   const href = escape(link);
   const logo = escape(`${new URL(link).origin}/brand/pronttera-mark.png`);
   return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#111">
@@ -122,7 +124,7 @@ function layout(heading: string, body: string, button: string, link: string): st
 <tr><td style="padding-top:24px;font-size:22px;font-weight:700">${escape(heading)}</td></tr>
 <tr><td style="padding-top:12px;font-size:15px;line-height:1.5;color:#444">${escape(body)}</td></tr>
 <tr><td style="padding-top:24px"><a href="${href}" style="display:inline-block;background:#0a78b0;color:#fff;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:999px">${escape(button)}</a></td></tr>
-<tr><td style="padding-top:24px;font-size:13px;line-height:1.5;color:#777">The link works once. If it has expired, ask for a new one. If the button doesn't work, open this address:<br><a href="${href}" style="color:#0a78b0;word-break:break-all">${href}</a></td></tr>
+<tr><td style="padding-top:24px;font-size:13px;line-height:1.5;color:#777">${escape(note)} If the button doesn't work, open this address:<br><a href="${href}" style="color:#0a78b0;word-break:break-all">${href}</a></td></tr>
 <tr><td style="padding-top:24px;border-top:1px solid #eee;font-size:12px;color:#999">Pronttera Sales · Made by Pronttera</td></tr>
 </table></td></tr></table></body></html>`;
 }

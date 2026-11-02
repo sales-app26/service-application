@@ -9,6 +9,7 @@ export const DB_SCHEMA = 'sales';
 /** Table names, one-for-one with the `sql/` files (DB Design §2). */
 export const TABLE = {
   USERS: 'users',
+  PUSH_SUBSCRIPTIONS: 'push_subscriptions',
   PROJECTS: 'projects',
   PROJECT_MEMBERS: 'project_members',
   LOCATIONS: 'locations',
@@ -67,6 +68,7 @@ export const DB_CONSTRAINT = {
   LEADS_PROJECT_PHONE: 'leads_project_phone_key',
   LOCATIONS_PROJECT_NAME: 'locations_project_name_key',
   FOLLOW_UPS_CLIENT_REQUEST: 'follow_ups_client_request_id_key',
+  FOLLOW_UPS_RECORDING: 'follow_ups_recording_sha256_key',
   FOLLOW_UPS_CAPTURE_TOKEN: 'follow_ups_capture_token_hash_key',
   LEAD_TRANSFERS_ONE_PENDING: 'lead_transfers_one_pending_per_lead',
   PROJECT_MEMBERS_PROJECT_USER: 'project_members_project_user_key',

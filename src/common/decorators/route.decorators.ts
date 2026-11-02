@@ -2,7 +2,7 @@ import { ExecutionContext, SetMetadata, createParamDecorator } from '@nestjs/com
 import { Request } from 'express';
 
 import { METADATA_KEY } from '../constants';
-import { UserRole } from '../enums';
+import { UserRole, WorkType } from '../enums';
 
 /**
  * The signed-in person, attached to the request by the auth guard after the
@@ -14,6 +14,7 @@ export interface AuthenticatedUser {
   name: string;
   email: string;
   role: UserRole;
+  workType: WorkType;
   /** The raw Supabase access token, for the few Auth calls made as the user. */
   accessToken: string;
 }

@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 
+import { CallsModule } from '../calls/calls.module';
 import { LocationsModule } from '../locations/locations.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { VisitsModule } from '../visits/visits.module';
+import { AdminLeadsService } from './admin-leads.service';
 import { EntriesController } from './entries.controller';
 import { EntriesService } from './entries.service';
 import { EntryPresenter } from './entry.presenter';
@@ -19,12 +21,13 @@ import { OpenLeadsService } from './open-leads.service';
  * transfers, the timeline and the dashboard, which show the same rows.
  */
 @Module({
-  imports: [LocationsModule, PricingModule, VisitsModule],
+  imports: [CallsModule, LocationsModule, PricingModule, VisitsModule],
   controllers: [LeadsController, EntriesController],
   providers: [
     LeadsService,
     LeadsImportService,
     OpenLeadsService,
+    AdminLeadsService,
     EntriesService,
     LeadAccessService,
     LeadStateService,

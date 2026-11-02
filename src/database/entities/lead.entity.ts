@@ -9,7 +9,13 @@ import {
 } from 'typeorm';
 
 import { PG_TYPE, SQL_DEFAULT, TABLE } from '../../common/constants';
-import { DiscountType, LeadSource, LeadStatus, PlanCode } from '../../common/enums';
+import {
+  DiscountType,
+  LeadSource,
+  LeadStatus,
+  NextStepChannel,
+  PlanCode,
+} from '../../common/enums';
 import { nullableNumericTransformer } from '../../common/utils/numeric.transformer';
 import { Location } from './location.entity';
 import { Project } from './project.entity';
@@ -74,6 +80,17 @@ export class Lead {
   /** Copied from the latest entry. Drives Due today. */
   @Column({ name: 'next_follow_up_date', type: PG_TYPE.DATE, nullable: true })
   nextFollowUpDate: string | null;
+
+  /** Copied from the latest entry. India time, HH:MM. */
+  @Column({ name: 'next_follow_up_time', type: PG_TYPE.TEXT, nullable: true })
+  nextFollowUpTime: string | null;
+
+  @Column({ name: 'next_follow_up_channel', type: PG_TYPE.TEXT, nullable: true })
+  nextFollowUpChannel: NextStepChannel | null;
+
+  /** The moment last reminded about, so a rescheduled follow-up reminds again. */
+  @Column({ name: 'reminded_for', type: PG_TYPE.TIMESTAMPTZ, nullable: true })
+  remindedFor: Date | null;
 
   /** Set when the status becomes Converted; cleared if it leaves. Drives targets. */
   @Column({ name: 'converted_at', type: PG_TYPE.TIMESTAMPTZ, nullable: true })

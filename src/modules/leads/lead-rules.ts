@@ -6,7 +6,15 @@ import {
   REASON_STATUSES,
   TERMINAL_STATUSES,
 } from '../../common/constants';
-import { LeadStatus, LostReason } from '../../common/enums';
+import {
+  CallOutcome,
+  FollowUpChannel,
+  LeadStatus,
+  LostReason,
+  NextStepChannel,
+  ProjectType,
+  WorkType,
+} from '../../common/enums';
 import {
   BusinessException,
   ForbiddenBusinessException,
@@ -182,3 +190,62 @@ export const dealChangesAfter = (
   }
   return resolveDeal(deal, offer);
 };
+
+/**
+ * What kind of follow-up this is, and whether this person may log it. An app that doesn't send a
+ * kind yet gets what the campaign always meant: a visit door to door, otherwise `other`.
+ */
+export const resolveChannel = (
+  requested: FollowUpChannel | undefined,
+  projectType: ProjectType,
+  workType: WorkType,
+): FollowUpChannel => {
+  const doorToDoor = projectType === ProjectType.DOOR_TO_DOOR;
+  const channel = requested ?? (doorToDoor ? FollowUpChannel.VISIT : FollowUpChannel.OTHER);
+
+  if (channel === FollowUpChannel.VISIT && !doorToDoor) {
+    throw new BusinessException(FOLLOW_UP_ERROR.NO_VISITS_ONLINE, ERROR_CODE.VALIDATION_FAILED);
+  }
+  if (channel === FollowUpChannel.VISIT && workType === WorkType.CALLING) {
+    throw new BusinessException(
+      FOLLOW_UP_ERROR.VISIT_NOT_FOR_CALLERS,
+      ERROR_CODE.VALIDATION_FAILED,
+    );
+  }
+  // Would let a door-to-door follow-up skip its proof.
+  if (channel === FollowUpChannel.OTHER && doorToDoor) {
+    throw new BusinessException(
+      FOLLOW_UP_ERROR.OTHER_NOT_DOOR_TO_DOOR,
+      ERROR_CODE.VALIDATION_FAILED,
+    );
+  }
+  return channel;
+};
+
+/** The call's outcome, which a call must have and nothing else keeps. */
+export const resolveCallOutcome = (
+  channel: FollowUpChannel,
+  outcome: CallOutcome | undefined,
+): CallOutcome | null => {
+  if (channel !== FollowUpChannel.CALL) return null;
+  if (!outcome) {
+    throw new BusinessException(
+      FOLLOW_UP_ERROR.CALL_OUTCOME_REQUIRED,
+      ERROR_CODE.VALIDATION_FAILED,
+    );
+  }
+  return outcome;
+};
+
+/** A call nobody answered: an attempt. It keeps the lead's status and needs no recording. */
+export const isUnreachedCall = (outcome: CallOutcome | null | undefined): boolean =>
+  !!outcome && outcome !== CallOutcome.SPOKE;
+
+/** The time and kind only mean something with a date to go with them. */
+export const resolveNextStep = (
+  date: string | null,
+  step: { nextFollowUpTime?: string | null; nextFollowUpChannel?: NextStepChannel | null },
+): { nextFollowUpTime: string | null; nextFollowUpChannel: NextStepChannel | null } => ({
+  nextFollowUpTime: date ? (step.nextFollowUpTime ?? null) : null,
+  nextFollowUpChannel: date ? (step.nextFollowUpChannel ?? null) : null,
+});

@@ -144,6 +144,8 @@ export interface SupabaseConfig {
   jwtSecret: string;
   /** Private bucket for visit photos and project images. */
   storageBucket: string;
+  /** Private bucket for call recordings, made on first use. */
+  recordingsBucket: string;
   timeoutMs: number;
 }
 
@@ -153,6 +155,7 @@ export const supabaseConfig = registerAs(CONFIG_NAMESPACE.SUPABASE, (): Supabase
   serviceRoleKey: process.env[ENV.SUPABASE_SERVICE_ROLE_KEY] ?? '',
   jwtSecret: process.env[ENV.SUPABASE_JWT_SECRET] ?? '',
   storageBucket: process.env[ENV.SUPABASE_STORAGE_BUCKET] ?? 'sales-tracker',
+  recordingsBucket: process.env[ENV.SUPABASE_RECORDINGS_BUCKET] ?? 'sales-call-recordings',
   timeoutMs: toNumber(process.env[ENV.SUPABASE_TIMEOUT_MS], 10_000),
 }));
 
@@ -294,7 +297,28 @@ export const swaggerConfig = registerAs(CONFIG_NAMESPACE.SWAGGER, (): SwaggerCon
 }));
 
 /** Every namespace, in the order `ConfigModule.forRoot({ load })` expects. */
+// ---------------------------------------------------------------------------
+// Reminders
+// ---------------------------------------------------------------------------
+
+export interface RemindersConfig {
+  /** Off in tests, which run the job by hand. */
+  enabled: boolean;
+  /** Push needs all three; without them reminders still appear inside the app. */
+  vapidPublicKey: string;
+  vapidPrivateKey: string;
+  vapidSubject: string;
+}
+
+export const remindersConfig = registerAs(CONFIG_NAMESPACE.REMINDERS, (): RemindersConfig => ({
+  enabled: toBoolean(process.env[ENV.REMINDERS_ENABLED], true),
+  vapidPublicKey: process.env[ENV.VAPID_PUBLIC_KEY] ?? '',
+  vapidPrivateKey: process.env[ENV.VAPID_PRIVATE_KEY] ?? '',
+  vapidSubject: process.env[ENV.VAPID_SUBJECT] ?? '',
+}));
+
 export const configurations = [
+  remindersConfig,
   appConfig,
   databaseConfig,
   supabaseConfig,

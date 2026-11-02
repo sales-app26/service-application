@@ -24,6 +24,7 @@ import {
   LeadOwnerTag,
   LeadSource,
   LeadStatus,
+  NextStepChannel,
   PlanCode,
   ProjectStatus,
   ProjectType,
@@ -102,6 +103,17 @@ export class LeadSummaryDto {
 
   @ApiPropertyOptional({ nullable: true, type: String, example: SWAGGER_EXAMPLE.DATE })
   nextFollowUpDate: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    example: '16:00',
+    description: 'India time.',
+  })
+  nextFollowUpTime: string | null;
+
+  @ApiPropertyOptional({ enum: NextStepChannel, nullable: true })
+  nextFollowUpChannel: NextStepChannel | null;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -372,6 +384,70 @@ export class CreateLeadDto extends LogFollowUpDto {
 
   // `status` is inherited. On a new lead New is allowed — the only place it is.
   // So are the deal fields, which a new lead takes with any status (the expected deal).
+}
+
+/** What the Super Admin fills in to add one lead. Nothing about a visit: nobody has been yet. */
+export class AddTeamLeadDto {
+  @ApiProperty({ example: 'Sharma General Stores' })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(BUSINESS_RULE.BUSINESS_NAME_MAX_LENGTH)
+  businessName: string;
+
+  @ApiPropertyOptional({ example: 'Anil Sharma', description: 'The owner or manager, if known.' })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(BUSINESS_RULE.NAME_MAX_LENGTH)
+  name?: string | null;
+
+  @ApiPropertyOptional({
+    example: '+91 98765-43210',
+    description:
+      'Indian mobile, if known. With no number, the business at that location must be new to the campaign.',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(20)
+  phone?: string | null;
+
+  @ApiProperty({ example: 'Kothrud' })
+  @IsString()
+  @IsNotEmpty()
+  location: string;
+
+  @ApiPropertyOptional({ description: 'About the client.' })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(BUSINESS_RULE.NOTES_MAX_LENGTH)
+  notes?: string | null;
+
+  @ApiPropertyOptional({
+    enum: Object.values(LeadSource).filter((source) => source !== LeadSource.IMPORT),
+    description: 'How the lead was found.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsIn(Object.values(LeadSource).filter((source) => source !== LeadSource.IMPORT))
+  source?: LeadSource;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    nullable: true,
+    description:
+      'An active member who gets the lead, and is told. Left out: unassigned, shown to admins under Not assigned and to reps under Open leads.',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID('4')
+  ownerId?: string | null;
 }
 
 /**

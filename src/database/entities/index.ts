@@ -9,6 +9,7 @@ import { Offer } from './offer.entity';
 import { PlanPrice } from './plan-price.entity';
 import { UserNotification } from './notification.entity';
 import { ProjectMember } from './project-member.entity';
+import { PushSubscription } from './push-subscription.entity';
 import { Project } from './project.entity';
 import { UserLeave } from './user-leave.entity';
 import {
@@ -35,6 +36,7 @@ export {
   Project,
   ProjectCourse,
   ProjectMember,
+  PushSubscription,
   RoleplaySession,
   TrainingCertification,
   TrainingCourse,
@@ -56,6 +58,7 @@ export const ALL_ENTITIES = [
   User,
   Project,
   ProjectMember,
+  PushSubscription,
   Location,
   Lead,
   FollowUp,

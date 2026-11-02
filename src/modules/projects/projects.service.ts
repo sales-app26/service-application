@@ -22,6 +22,7 @@ import { collapseWhitespace, escapeLike, istToday } from '../../common/utils';
 import { Project, ProjectMember } from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
 import { ImageService } from '../media/image.service';
+import { CallRecordingService } from '../calls/call-recording.service';
 import { SupabaseStorageClient } from '../supabase/supabase-storage.client';
 import { TransferRejectionsService } from '../transfers/transfer-rejections.service';
 import {
@@ -60,6 +61,7 @@ export class ProjectsService {
     private readonly access: ProjectAccessService,
     private readonly images: ImageService,
     private readonly storage: SupabaseStorageClient,
+    private readonly recordings: CallRecordingService,
     private readonly transferRejections: TransferRejectionsService,
   ) {}
 
@@ -281,6 +283,13 @@ export class ProjectsService {
           [projectId],
         )) as Array<{ path: string }>
       ).map((row) => row.path);
+      const recordings = (
+        (await manager.query(
+          `SELECT recording_path AS path FROM ${T.FOLLOW_UPS}
+            WHERE project_id = $1 AND recording_path IS NOT NULL`,
+          [projectId],
+        )) as Array<{ path: string }>
+      ).map((row) => row.path);
 
       const leads = `SELECT id FROM ${T.LEADS} WHERE project_id = $1`;
       const items = `SELECT id FROM ${T.TRAINING_ITEMS} WHERE project_id = $1`;
@@ -306,13 +315,20 @@ export class ProjectsService {
       }
 
       if (project.imagePath) files.push(project.imagePath);
-      return { ...counts, files };
+      return { ...counts, files, recordings };
     });
 
     for (let i = 0; i < result.files.length; i += STORAGE_REMOVE_CHUNK) {
       await this.storage.removeObjects(result.files.slice(i, i + STORAGE_REMOVE_CHUNK));
     }
-    return { leads: result.leads, followUps: result.followUps, files: result.files.length };
+    for (let i = 0; i < result.recordings.length; i += STORAGE_REMOVE_CHUNK) {
+      await this.recordings.remove(result.recordings.slice(i, i + STORAGE_REMOVE_CHUNK));
+    }
+    return {
+      leads: result.leads,
+      followUps: result.followUps,
+      files: result.files.length + result.recordings.length,
+    };
   }
 
   // ------------------------------------------------------------------ helpers

@@ -36,6 +36,18 @@ export class EntriesController {
     return this.entriesService.findOne(actor, params.id);
   }
 
+  @Get(`${ROUTE.ID_PARAM}/recording`)
+  @ApiOperation({
+    summary: 'A fresh short-lived link to a call’s recording',
+    description: 'For whoever may see the entry. 404 when the entry has no recording.',
+  })
+  recording(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+  ): Promise<{ url: string; expiresInSeconds: number }> {
+    return this.entriesService.recordingUrl(actor, params.id);
+  }
+
   @Get(`${ROUTE.ID_PARAM}/photo`)
   @ApiTags(SWAGGER_TAG.VISITS)
   @ApiOperation({ summary: 'A fresh short-lived link to an entry’s photo' })

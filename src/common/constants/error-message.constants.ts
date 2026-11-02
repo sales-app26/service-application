@@ -29,6 +29,7 @@ export const ERROR_CODE = {
   ENTRY_LOCKED: 'ENTRY_LOCKED',
   VISIT_PROOF_REQUIRED: 'VISIT_PROOF_REQUIRED',
   CAPTURE_EXPIRED: 'CAPTURE_EXPIRED',
+  CALL_RECORDING_REQUIRED: 'CALL_RECORDING_REQUIRED',
   TRANSFER_PENDING: 'TRANSFER_PENDING',
   TRANSFER_ALREADY_DECIDED: 'TRANSFER_ALREADY_DECIDED',
 } as const;
@@ -76,6 +77,8 @@ export const AUTH_ERROR = {
   CURRENT_PASSWORD_WRONG: 'The current password is incorrect.',
   PASSWORD_NOT_SAVED:
     'Your password couldn’t be saved, and this link can’t be used again. Ask your sales manager for a new one.',
+  /** An invite is spent only once the password is saved, so its link is still good. */
+  INVITE_PASSWORD_NOT_SAVED: 'Your password couldn’t be saved. Please try again in a minute.',
   AUTH_UNAVAILABLE: 'Signing in isn’t working right now. Please try again in a minute.',
 } as const;
 
@@ -97,6 +100,8 @@ export const USER_ERROR = {
   SAME_ROLE: 'This person already has this role.',
   SAME_EMAIL: 'This person already uses this email.',
   RESET_LINK_INACTIVE: 'Bring this person back to the team first, then make a reset link.',
+  INVITE_INACTIVE: 'Bring this person back to the team first, then send the invite.',
+  INVITE_ALREADY_USED: 'This person has already set a password. Send them a reset link instead.',
   DELETE_SELF: 'You can’t delete your own account.',
   DELETE_SUPER_ADMIN: 'A sales head can’t be deleted. Change their role first.',
   DELETE_NEEDS_RECIPIENT: 'This person still owns leads. Choose who takes them over.',
@@ -223,6 +228,10 @@ export const LEAD_ERROR = {
     `This number is already a lead in this campaign, owned by ${owner}.`,
   DUPLICATE_UNASSIGNED:
     'This number is already a lead in this campaign, waiting under Open leads. Take it from there.',
+  DUPLICATE_NOT_ASSIGNED:
+    'This number is already a lead in this campaign, not assigned to anyone yet.',
+  DUPLICATE_BUSINESS: 'This business is already a lead at this location.',
+  OWNER_NOT_ON_TEAM: 'Choose someone on this campaign’s team.',
   /** The same rule caught at the last moment, when the owner's name is not at hand. */
   DUPLICATE_ANY: 'This number is already a lead in this campaign.',
   NOT_A_MEMBER: 'You aren’t on this campaign’s team.',
@@ -236,6 +245,11 @@ export const LEAD_ERROR = {
 } as const;
 
 export const FOLLOW_UP_ERROR = {
+  CALL_OUTCOME_REQUIRED: 'Choose how the call went.',
+  NO_VISITS_ONLINE: 'This is an online campaign, so it has no visits. Log a call instead.',
+  VISIT_NOT_FOR_CALLERS:
+    'You’re set up for calling, so you can’t log a visit. Ask your sales manager.',
+  OTHER_NOT_DOOR_TO_DOOR: 'A door-to-door campaign logs visits and calls only.',
   NOT_FOUND: 'We couldn’t find this follow-up.',
   ONLY_OWNER_LOGS: 'Only the lead’s owner can log a follow-up.',
   LEAD_TRANSFERRED: (owner: string): string => `This lead now belongs to ${owner}.`,
@@ -372,4 +386,15 @@ export const VERSION_ERROR = {
   FILE_TYPE: 'Upload a .md or .txt file.',
   FILE_TOO_LARGE: 'The file is larger than 512 KB.',
   FILE_EMPTY: 'That file is empty.',
+} as const;
+
+export const CALL_ERROR = {
+  RECORDING_REQUIRED: 'Add the call recording to save a call you spoke on.',
+  RECORDING_NOT_AUDIO: 'That file isn’t a call recording. Choose an audio file from your phone.',
+  RECORDING_USED: 'This recording is already on another call. Choose the one from this call.',
+  NO_RECORDING: 'This entry has no recording.',
+} as const;
+
+export const REMINDER_ERROR = {
+  UNKNOWN_PUSH_SERVICE: 'This browser’s reminders can’t be turned on here.',
 } as const;

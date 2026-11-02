@@ -70,6 +70,7 @@ export const TIME_ZONE = 'Asia/Kolkata';
 /** Multipart field names. */
 export const UPLOAD_FIELD = {
   PHOTO: 'photo',
+  RECORDING: 'recording',
   IMAGE: 'image',
   FILE: 'file',
 } as const;
@@ -104,6 +105,7 @@ export const SUCCESS_MESSAGE = {
   USER_DELETED: 'Person deleted.',
   RESET_LINK_CREATED: 'Reset link ready. Share it only with this person.',
   RESET_EMAIL_SENT: 'Reset email sent.',
+  INVITE_RESENT: 'Invite sent again.',
   PROJECT_CLOSED: 'Campaign closed. It can still be viewed, but not changed.',
   PROJECT_DELETED: 'Campaign deleted, with all its leads, visits and photos.',
   PROJECT_REOPENED: 'Campaign reopened.',
@@ -168,6 +170,16 @@ export const NOTIFICATION_LINK = {
 
 /** The title and body lines of each in-app notification. */
 export const NOTIFICATION_TEXT = {
+  REMINDER_CALL: (lead: string) => `Time to call ${lead}`,
+  REMINDER_VISIT: (lead: string) => `Time to visit ${lead}`,
+  REMINDER_OTHER: (lead: string) => `Time to follow up with ${lead}`,
+  REMINDER_DIGEST: (today: number, overdue: number) =>
+    [
+      today > 0 ? `${today} follow-up${today === 1 ? '' : 's'} today` : '',
+      overdue > 0 ? `${overdue} overdue` : '',
+    ]
+      .filter(Boolean)
+      .join(', '),
   LEAVE_COVER_TITLE: (name: string, span: string) => `${name} is on leave ${span}`,
   LEAVE_COVER_BODY: (projects: string) => `You're covering their follow-ups in ${projects}.`,
   MENTION_TITLE: (actor: string, lead: string) => `${actor} mentioned you on ${lead}`,

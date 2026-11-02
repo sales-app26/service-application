@@ -1,3 +1,4 @@
+import { generateVAPIDKeys } from 'web-push';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { AddressInfo } from 'node:net';
@@ -16,6 +17,8 @@ import { FakeYoutube } from './fake-youtube';
 
 const JWT_SECRET = 'e2e-supabase-jwt-secret-at-least-32-characters-long';
 const BUCKET = 'sales-tracker-e2e';
+export const RECORDINGS_BUCKET = 'sales-recordings-e2e';
+const vapid = generateVAPIDKeys();
 export const APP_URL = 'https://app.example.com';
 
 export interface Harness {
@@ -29,6 +32,8 @@ export interface Harness {
   /** YouTube's playlist feed, faked. */
   youtube: FakeYoutube;
   superAdminId: string;
+  /** Runs the reminder job, as its timer would, at the moment given. */
+  runReminders(now: Date): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -58,6 +63,8 @@ export const startHarness = async (): Promise<Harness> => {
     '11_lead_business_name.sql',
     '12_unassigned_leads.sql',
     '13_lead_phone_optional.sql',
+    '14_invite_links.sql',
+    '15_calls_and_reminders.sql',
   ]) {
     await db.exec(readFileSync(join(__dirname, '../../src/database/sql', file), 'utf8'));
   }
@@ -92,6 +99,12 @@ export const startHarness = async (): Promise<Harness> => {
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key-for-the-e2e-suite',
     SUPABASE_JWT_SECRET: JWT_SECRET,
     SUPABASE_STORAGE_BUCKET: BUCKET,
+    SUPABASE_RECORDINGS_BUCKET: RECORDINGS_BUCKET,
+    // The tests run the reminder job by hand, at the moment they choose.
+    REMINDERS_ENABLED: 'false',
+    VAPID_PUBLIC_KEY: vapid.publicKey,
+    VAPID_PRIVATE_KEY: vapid.privateKey,
+    VAPID_SUBJECT: 'mailto:sales@example.com',
     CAPTURE_TOKEN_SECRET: 'e2e-capture-token-secret-at-least-32-chars',
     APP_URL,
     THROTTLE_LIMIT: '100000',
@@ -137,6 +150,7 @@ export const startHarness = async (): Promise<Harness> => {
     const { setupSwagger } = await import('../../src/config/swagger.setup');
     const { CONFIG_NAMESPACE } = await import('../../src/common/constants');
     const { ConfigService } = await import('@nestjs/config');
+    const { RemindersService } = await import('../../src/modules/reminders/reminders.service');
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .setLogger(new QuietLogger())
@@ -161,6 +175,7 @@ export const startHarness = async (): Promise<Harness> => {
       anthropic,
       youtube,
       superAdminId,
+      runReminders: (now) => (app as INestApplication).get(RemindersService).tick(now),
       close: async () => {
         await (app as INestApplication).close();
         await stopBackends();

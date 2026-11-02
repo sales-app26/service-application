@@ -11,7 +11,13 @@ import {
 } from 'class-validator';
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
-import { ProjectStatus, ProjectType, TargetPeriod, UserRole } from '../../../common/enums';
+import {
+  ProjectStatus,
+  ProjectType,
+  TargetPeriod,
+  UserRole,
+  WorkType,
+} from '../../../common/enums';
 import { lowerTrimString, trimString } from '../../../common/utils';
 import { LeaveSpanDto } from '../../leaves/dto/leave.dto';
 
@@ -47,7 +53,8 @@ export class ForgotPasswordDto {
 
 export class SetPasswordDto {
   @ApiProperty({
-    description: 'The one-time `token_hash` from the invite or reset link the API emailed (Brevo).',
+    description:
+      'The one-time `token_hash` from the invite or reset link the API emailed (Brevo). Reset links expire; invite links do not.',
   })
   @IsString()
   @IsNotEmpty()
@@ -134,6 +141,9 @@ export class MeDto {
 
   @ApiProperty({ enum: UserRole })
   role: UserRole;
+
+  @ApiProperty({ enum: WorkType, description: 'Field, Calling or Both. Not a permission.' })
+  workType: WorkType;
 
   @ApiProperty({
     type: [MyProjectDto],

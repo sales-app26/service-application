@@ -41,7 +41,8 @@ export class NotificationSenderService {
 
   async send(
     manager: EntityManager | null,
-    actorId: string,
+    // Null when no person caused it, like a reminder.
+    actorId: string | null,
     items: NotificationInput[],
   ): Promise<number> {
     const seen = new Set<string>();

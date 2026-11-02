@@ -10,6 +10,13 @@ export enum UserRole {
   SALES_PERSON = 'sales_person',
 }
 
+/** users.work_type — where a person sells. Not a permission: their role is. */
+export enum WorkType {
+  FIELD = 'field',
+  CALLING = 'calling',
+  BOTH = 'both',
+}
+
 /** projects.type — decides whether a follow-up needs visit proof. */
 export enum ProjectType {
   ONLINE = 'online',
@@ -45,6 +52,31 @@ export enum EntryType {
   FOLLOW_UP = 'follow_up',
   /** A status changed by hand. Never carries a photo: it is not a visit. */
   STATUS_CHANGE = 'status_change',
+}
+
+/** follow_ups.channel — how the contact was made. Null on entries older than the column. */
+export enum FollowUpChannel {
+  /** In person. Needs a photo and position. */
+  VISIT = 'visit',
+  /** On the phone. Needs a recording once it connected. */
+  CALL = 'call',
+  /** WhatsApp or a note. Online campaigns only, so a door-to-door visit can't dodge its proof. */
+  OTHER = 'other',
+}
+
+/** What the next follow-up will be. */
+export enum NextStepChannel {
+  VISIT = 'visit',
+  CALL = 'call',
+}
+
+/** follow_ups.call_outcome — only `spoke` is a conversation; the rest are attempts. */
+export enum CallOutcome {
+  SPOKE = 'spoke',
+  NO_ANSWER = 'no_answer',
+  BUSY = 'busy',
+  SWITCHED_OFF = 'switched_off',
+  WRONG_NUMBER = 'wrong_number',
 }
 
 /** lead_transfers.status */
@@ -150,6 +182,7 @@ export enum NotificationKind {
   FEEDBACK = 'feedback',
   LEAVE_COVER = 'leave_cover',
   TRAINING = 'training',
+  FOLLOW_UP_REMINDER = 'follow_up_reminder',
 }
 
 /** training_items.kind */

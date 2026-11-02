@@ -49,6 +49,8 @@ export const BUSINESS_RULE = {
   PLACE_NAME_MAX_LENGTH: 200,
   /** Raw camera upload ceiling; the phone compresses before sending (VP-7). */
   VISIT_PHOTO_MAX_BYTES: 8 * 1024 * 1024,
+  /** A long call in the phone's usual format is well under this. */
+  CALL_RECORDING_MAX_BYTES: 25 * 1024 * 1024,
   /** Stored photo: longest edge and JPEG quality steps toward ~200–300 KB. */
   VISIT_PHOTO_MAX_EDGE_PX: 1280,
   VISIT_PHOTO_QUALITY_STEPS: [72, 62, 52] as readonly number[],

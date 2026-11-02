@@ -10,9 +10,10 @@ import {
   Post,
   Query,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -45,6 +46,7 @@ import { UserRole } from '../../common/enums';
 import { ChangeStatusDto, EntryDto, ListEntriesQueryDto, LogFollowUpDto } from './dto/entry.dto';
 import { EntrySaveResultDto } from './dto/entry-result.dto';
 import {
+  AddTeamLeadDto,
   BulkDeleteLeadsDto,
   BulkDeleteResultDto,
   CreateLeadDto,
@@ -55,15 +57,28 @@ import {
 } from './dto/lead.dto';
 import { ImportLeadsDto, ImportResultDto } from './dto/import.dto';
 import { ClaimLeadResultDto, ListOpenLeadsQueryDto, OpenLeadDto } from './dto/open-lead.dto';
+import { AdminLeadsService } from './admin-leads.service';
 import { EntriesService } from './entries.service';
 import { LeadsImportService } from './leads-import.service';
 import { LeadsService } from './leads.service';
 import { OpenLeadsService } from './open-leads.service';
 
-/** Multer ceiling for the raw camera upload; the phone compresses first (VP-7). */
-export const PHOTO_UPLOAD = FileInterceptor(UPLOAD_FIELD.PHOTO, {
-  limits: { fileSize: BUSINESS_RULE.VISIT_PHOTO_MAX_BYTES, files: 1 },
-});
+/**
+ * Multer's ceiling is the largest file either part may be: the recording. The photo service
+ * holds photos to their own, lower limit.
+ */
+export const ENTRY_UPLOAD = FileFieldsInterceptor(
+  [
+    { name: UPLOAD_FIELD.PHOTO, maxCount: 1 },
+    { name: UPLOAD_FIELD.RECORDING, maxCount: 1 },
+  ],
+  { limits: { fileSize: BUSINESS_RULE.CALL_RECORDING_MAX_BYTES, files: 1 } },
+);
+
+interface EntryFiles {
+  photo?: Express.Multer.File[];
+  recording?: Express.Multer.File[];
+}
 
 /** Swagger only: the form fields plus the photo part. */
 class CreateLeadFormDto extends CreateLeadDto {
@@ -73,6 +88,13 @@ class CreateLeadFormDto extends CreateLeadDto {
     description: 'Door-to-door: the live photo.',
   })
   photo?: unknown;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'A call you spoke on: the recording, up to 25 MB.',
+  })
+  recording?: unknown;
 }
 
 class LogFollowUpFormDto extends LogFollowUpDto {
@@ -82,6 +104,13 @@ class LogFollowUpFormDto extends LogFollowUpDto {
     description: 'Door-to-door: the live photo.',
   })
   photo?: unknown;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'A call you spoke on: the recording, up to 25 MB.',
+  })
+  recording?: unknown;
 }
 
 /** The CSV for a bulk import: one file part, never a photo. */
@@ -99,6 +128,8 @@ const DOOR_TO_DOOR_NOTE = [
   '',
   '**Online projects** take JSON; photo and GPS are not stored.',
   '',
+  '**A call** (`channel=call`, in any project) needs `callOutcome`. With `spoke` it needs `recording` as `multipart/form-data`: an audio file up to 25 MB, each recording usable once. The other outcomes are attempts: JSON, no recording, the lead keeps its status, and with no `nextFollowUpDate` it comes up again tomorrow.',
+  '',
   '`clientRequestId` makes the save idempotent: a double tap or retry returns the first result.',
 ].join('\n');
 
@@ -112,6 +143,7 @@ export class LeadsController {
     private readonly entriesService: EntriesService,
     private readonly importService: LeadsImportService,
     private readonly openLeads: OpenLeadsService,
+    private readonly adminLeads: AdminLeadsService,
   ) {}
 
   @Get(`${ROUTE.PROJECTS}/:id/${ROUTE.LEADS}/open`)
@@ -175,9 +207,26 @@ export class LeadsController {
     return this.importService.import(actor, params.id, file, dto);
   }
 
+  @Post(`${ROUTE.PROJECTS}/:id/${ROUTE.LEADS}/add`)
+  @Roles(UserRole.SUPER_ADMIN)
+  @ResponseMessage(SUCCESS_MESSAGE.LEAD_CREATED)
+  @ApiOperation({
+    summary: 'Add one lead and assign it (Super Admin)',
+    description:
+      'Like one row of a bulk upload, in any campaign: the lead starts as New with no follow-up and no visit photo. Business name and location are required. `ownerId` must be an active member, who is notified; left out, the lead is unassigned. A number already a lead here, or with no number a business already listed at that location, gives `409 DUPLICATE_LEAD_OTHER` with `details.leadId`.',
+  })
+  @ApiCreatedEnvelope(LeadDetailDto)
+  addForTeam(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+    @Body() dto: AddTeamLeadDto,
+  ): Promise<LeadDetailDto> {
+    return this.adminLeads.add(actor, params.id, dto);
+  }
+
   @Post(`${ROUTE.PROJECTS}/:id/${ROUTE.LEADS}`)
   @Roles(UserRole.SALES_PERSON, UserRole.MODERATOR)
-  @UseInterceptors(PHOTO_UPLOAD)
+  @UseInterceptors(ENTRY_UPLOAD)
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiBody({ type: CreateLeadFormDto })
   @ResponseMessage(SUCCESS_MESSAGE.LEAD_CREATED)
@@ -196,9 +245,15 @@ export class LeadsController {
     @CurrentUser() actor: AuthenticatedUser,
     @Param() params: UuidParamDto,
     @Body() dto: CreateLeadDto,
-    @UploadedFile() photo?: Express.Multer.File,
+    @UploadedFiles() files?: EntryFiles,
   ): Promise<LeadDetailDto> {
-    return this.leadsService.create(actor, params.id, dto, photo);
+    return this.leadsService.create(
+      actor,
+      params.id,
+      dto,
+      files?.photo?.[0],
+      files?.recording?.[0],
+    );
   }
 
   @Get(`${ROUTE.PROJECTS}/:id/${ROUTE.LEADS}`)
@@ -293,7 +348,7 @@ export class LeadsController {
   @Post(`${ROUTE.LEADS}/${ROUTE.ID_PARAM}/follow-ups`)
   @ApiTags(SWAGGER_TAG.ENTRIES)
   @Roles(UserRole.SALES_PERSON, UserRole.MODERATOR)
-  @UseInterceptors(PHOTO_UPLOAD)
+  @UseInterceptors(ENTRY_UPLOAD)
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiBody({ type: LogFollowUpFormDto })
   @ResponseMessage(SUCCESS_MESSAGE.FOLLOW_UP_LOGGED)
@@ -314,9 +369,15 @@ export class LeadsController {
     @CurrentUser() actor: AuthenticatedUser,
     @Param() params: UuidParamDto,
     @Body() dto: LogFollowUpDto,
-    @UploadedFile() photo?: Express.Multer.File,
+    @UploadedFiles() files?: EntryFiles,
   ): Promise<EntrySaveResultDto> {
-    return this.entriesService.logFollowUp(actor, params.id, dto, photo);
+    return this.entriesService.logFollowUp(
+      actor,
+      params.id,
+      dto,
+      files?.photo?.[0],
+      files?.recording?.[0],
+    );
   }
 
   @Post(`${ROUTE.LEADS}/${ROUTE.ID_PARAM}/status`)

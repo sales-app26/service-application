@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, Repository } from 'typeorm';
+import { Brackets, DataSource, IsNull, Not, Repository } from 'typeorm';
 
 import {
   AUTO_REJECT_REASON,
@@ -11,14 +11,20 @@ import {
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/dto';
-import { UserRole } from '../../common/enums';
+import { UserRole, WorkType } from '../../common/enums';
 import {
   BusinessException,
   ConflictBusinessException,
   ForbiddenBusinessException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
-import { blankToNull, escapeLike, normaliseIndianMobile } from '../../common/utils';
+import {
+  blankToNull,
+  escapeLike,
+  hashInviteToken,
+  newInviteToken,
+  normaliseIndianMobile,
+} from '../../common/utils';
 import { ProjectMember, User } from '../../database/entities';
 import { ProjectAccessService } from '../access/project-access.service';
 import { LeaveSpanDto } from '../leaves/dto/leave.dto';
@@ -174,9 +180,10 @@ export class UsersService {
     const phone = this.normalisePhone(dto.phone);
     await this.assertEmailFree(dto.email);
 
+    const inviteToken = newInviteToken();
     let authUserId: string;
     try {
-      ({ id: authUserId } = await this.authClient.inviteUser(dto.email, dto.name));
+      ({ id: authUserId } = await this.authClient.inviteUser(dto.email, dto.name, inviteToken));
     } catch (error) {
       if (error instanceof SupabaseCallError && error.failure === SupabaseFailure.EMAIL_EXISTS) {
         throw new ConflictBusinessException(USER_ERROR.EMAIL_IN_AUTH);
@@ -194,6 +201,9 @@ export class UsersService {
           role: dto.role,
           isActive: true,
           createdBy: actor.id,
+          inviteTokenHash: hashInviteToken(inviteToken),
+          workType:
+            dto.workType ?? (dto.role === UserRole.SALES_PERSON ? WorkType.FIELD : WorkType.BOTH),
         }),
       );
       // A new person has no leave yet.
@@ -211,6 +221,7 @@ export class UsersService {
 
     if (dto.name !== undefined) user.name = dto.name;
     if (dto.phone !== undefined) user.phone = this.normalisePhone(dto.phone);
+    if (dto.workType !== undefined) user.workType = dto.workType;
 
     return this.toDto(await this.users.save(user), true);
   }
@@ -302,6 +313,9 @@ export class UsersService {
     }
 
     user.email = dto.email;
+    // A link that never expires must not stay with the old address, often a typo. Nobody
+    // holds this new token; the admin resends the invite to the new email.
+    if (user.inviteTokenHash) user.inviteTokenHash = hashInviteToken(newInviteToken());
     const saved = await this.users.save(user);
     this.logger.log(`Email of ${user.id} changed by ${actor.id}`);
     return this.toDto(saved, true);
@@ -335,6 +349,30 @@ export class UsersService {
     } catch (error) {
       throw SupabaseAuthClient.toBusinessException(error);
     }
+  }
+
+  /**
+   * Emails a person who hasn't got in yet a new invite link. The earlier link stops
+   * working only once this one is on its way, so a failed send leaves it as it was.
+   */
+  async resendInvite(actor: AuthenticatedUser, userId: string): Promise<{ email: string }> {
+    const user = await this.findManageableOrFail(actor, userId);
+    if (!user.isActive) throw new ConflictBusinessException(USER_ERROR.INVITE_INACTIVE);
+    if (!user.inviteTokenHash) throw new ConflictBusinessException(USER_ERROR.INVITE_ALREADY_USED);
+
+    const inviteToken = newInviteToken();
+    try {
+      await this.authClient.sendInviteEmail(user.email, user.name, inviteToken);
+    } catch (error) {
+      throw SupabaseAuthClient.toBusinessException(error);
+    }
+    // Not over a password they set a moment ago: that would reopen the invite.
+    await this.users.update(
+      { id: user.id, inviteTokenHash: Not(IsNull()) },
+      { inviteTokenHash: hashInviteToken(inviteToken) },
+    );
+    this.logger.log(`Invite for ${user.id} sent again by ${actor.id}`);
+    return { email: user.email };
   }
 
   /**
@@ -425,6 +463,7 @@ export class UsersService {
           email: `deleted-${user.id}@deleted.invalid`,
           phone: null,
           isActive: false,
+          inviteTokenHash: null,
           deletedAt: new Date(),
         },
       );

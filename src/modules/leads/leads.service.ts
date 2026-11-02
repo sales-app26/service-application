@@ -20,8 +20,10 @@ import {
 import { AuthenticatedUser } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/dto';
 import {
+  CallOutcome,
   CommentKind,
   EntryType,
+  FollowUpChannel,
   LeadDue,
   LeadStatus,
   ProjectStatus,
@@ -47,6 +49,11 @@ import { ProjectAccessService } from '../access/project-access.service';
 import { LocationsService } from '../locations/locations.service';
 import { PricingService } from '../pricing/pricing.service';
 import { TransferRejectionsService } from '../transfers/transfer-rejections.service';
+import {
+  CallRecordingService,
+  StoredRecording,
+  UploadedRecording,
+} from '../calls/call-recording.service';
 import { StoredVisitProof, VisitProofService } from '../visits/visit-proof.service';
 import { EntryDto, ListEntriesQueryDto } from './dto/entry.dto';
 import {
@@ -65,7 +72,15 @@ import {
 import { dealGiven, dealTouched, resolveDeal } from './deal-rules';
 import { EntryPresenter } from './entry.presenter';
 import { LeadAccessService, LeadVisibility } from './lead-access.service';
-import { coldSince, resolveNextFollowUpDate, resolveReason } from './lead-rules';
+import {
+  coldSince,
+  isUnreachedCall,
+  resolveCallOutcome,
+  resolveChannel,
+  resolveNextFollowUpDate,
+  resolveNextStep,
+  resolveReason,
+} from './lead-rules';
 import { LeadPresenter } from './lead.presenter';
 
 interface UploadedPhoto {
@@ -77,7 +92,11 @@ const SORT: Record<LeadSort, { column: string; direction: SortDirection; then?: 
   created: { column: 'l.createdAt', direction: SORT_ORDER.DESC },
   // By business name; older leads with only a person's name follow, by that name.
   name: { column: 'l.businessName', direction: SORT_ORDER.ASC, then: 'l.name' },
-  next_follow_up: { column: 'l.nextFollowUpDate', direction: SORT_ORDER.ASC },
+  next_follow_up: {
+    column: 'l.nextFollowUpDate',
+    direction: SORT_ORDER.ASC,
+    then: 'l.nextFollowUpTime',
+  },
   value: { column: 'l.dealValue', direction: SORT_ORDER.DESC },
   // Longest untouched first.
   activity: { column: 'l.lastActivityAt', direction: SORT_ORDER.ASC },
@@ -102,6 +121,7 @@ export class LeadsService {
     private readonly leadAccess: LeadAccessService,
     private readonly locations: LocationsService,
     private readonly visitProof: VisitProofService,
+    private readonly recordings: CallRecordingService,
     private readonly leadPresenter: LeadPresenter,
     private readonly entryPresenter: EntryPresenter,
     private readonly transferRejections: TransferRejectionsService,
@@ -127,6 +147,7 @@ export class LeadsService {
     projectId: string,
     dto: CreateLeadDto,
     photo?: UploadedPhoto,
+    recordingFile?: UploadedRecording,
   ): Promise<LeadDetailDto> {
     const replay = await this.leadAccess.findReplay(dto.clientRequestId, actor.id);
     if (replay) {
@@ -140,28 +161,42 @@ export class LeadsService {
     await this.assertPhoneFree(projectId, phone, actor.id, { offerRequest: true });
     const locationName = this.locations.normaliseName(dto.location);
 
+    const channel = resolveChannel(dto.channel, project.type, actor.workType);
+    const callOutcome = resolveCallOutcome(channel, dto.callOutcome);
+    // An unanswered call doesn't move a new lead along.
+    const unreached = isUnreachedCall(callOutcome);
+    const status = unreached ? LeadStatus.NEW : dto.status;
+
     const now = new Date();
+    const today = istToday(now);
     const nextFollowUpDate = resolveNextFollowUpDate(
-      dto.status,
-      dto.nextFollowUpDate,
-      istToday(now),
+      status,
+      dto.nextFollowUpDate ?? (unreached ? addDays(today, 1) : undefined),
+      today,
     );
-    const reason = resolveReason(dto.status, dto.reason);
+    const nextStep = resolveNextStep(nextFollowUpDate, dto);
+    const reason = unreached ? null : resolveReason(status, dto.reason);
     // Any stage: on a new lead the deal is the expected one.
     const deal = dealGiven(dto)
       ? resolveDeal(dto, await this.pricing.dealOffer(dto.offerId, null))
       : null;
-    const needsProof = this.visitProof.requiresProof(project.type);
+    const needsProof = channel === FollowUpChannel.VISIT;
     const proofInput = { ...dto, photo };
     if (needsProof) {
       this.visitProof.validate(proofInput, actor, now);
     }
+    const preparedRecording =
+      callOutcome === CallOutcome.SPOKE ? await this.recordings.prepare(recordingFile) : null;
 
     const leadId = randomUUID();
     const entryId = randomUUID();
     let proof: StoredVisitProof | null = null;
+    let recording: StoredRecording | null = null;
 
     try {
+      if (preparedRecording) {
+        recording = await this.recordings.store(preparedRecording, { projectId, entryId });
+      }
       if (needsProof) {
         proof = await this.visitProof.store(proofInput, {
           projectId,
@@ -183,7 +218,7 @@ export class LeadsService {
           locationName,
           actor.id,
         );
-        const converted = dto.status === LeadStatus.CONVERTED;
+        const converted = status === LeadStatus.CONVERTED;
 
         await manager.insert(Lead, {
           id: leadId,
@@ -194,8 +229,9 @@ export class LeadsService {
           phone,
           locationId: location.id,
           notes: dto.notes ?? null,
-          status: dto.status,
+          status,
           nextFollowUpDate,
+          ...nextStep,
           convertedAt: converted ? now : null,
           convertedBy: converted ? actor.id : null,
           ...deal,
@@ -210,10 +246,15 @@ export class LeadsService {
           projectId,
           userId: actor.id,
           entryType: EntryType.FOLLOW_UP,
-          status: dto.status,
+          status,
           note: dto.note,
           reason,
           nextFollowUpDate,
+          ...nextStep,
+          channel,
+          callOutcome,
+          recordingPath: recording?.recordingPath ?? null,
+          recordingSha256: recording?.recordingSha256 ?? null,
           locationId: location.id,
           photoPath: proof?.photoPath ?? null,
           latitude: proof?.latitude ?? null,
@@ -228,6 +269,8 @@ export class LeadsService {
       });
     } catch (error) {
       await this.visitProof.discard(proof);
+      await this.recordings.discard(recording);
+      if (this.recordings.isReuse(error)) throw this.recordings.usedError();
 
       if (
         isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CLIENT_REQUEST) ||

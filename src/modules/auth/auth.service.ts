@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 
 import { AUTH_ERROR, ERROR_CODE, LEAD_ERROR, SUCCESS_MESSAGE } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
 import { UserRole } from '../../common/enums';
 import { BusinessException } from '../../common/exceptions/business.exception';
-import { blankToNull, normaliseIndianMobile } from '../../common/utils';
+import { blankToNull, hashInviteToken, normaliseIndianMobile } from '../../common/utils';
 import { ProjectMember, User } from '../../database/entities';
 import { LeaveLookupService } from '../leaves/leave-lookup.service';
 import {
@@ -55,7 +55,10 @@ export class AuthService {
     }
 
     // The password was right, so naming the deactivation leaks nothing.
-    return this.toSession(session);
+    const signedIn = await this.toSession(session);
+    // The login is shared with Pronttera Connect, so a password may have come from there.
+    await this.closeInvite(session.user.id);
+    return signedIn;
   }
 
   async refresh(refreshToken: string): Promise<SessionDto> {
@@ -97,6 +100,12 @@ export class AuthService {
 
   /** Completes an invite or a reset link: the link's token sets the password. */
   async setPassword(dto: SetPasswordDto): Promise<void> {
+    // Ours first, whatever `type` says: the type can get lost on the way (see below).
+    const invited = await this.users.findOne({
+      where: { inviteTokenHash: hashInviteToken(dto.tokenHash) },
+    });
+    if (invited) return this.acceptInvite(invited, dto);
+
     let accessToken: string;
     let userId: string;
     try {
@@ -116,14 +125,44 @@ export class AuthService {
       await this.passwordApprovals.approve(userId);
       await this.authClient.setPasswordWithToken(accessToken, dto.password);
     } catch (error) {
-      this.logger.error(
-        `Password from a ${dto.type} link not saved for ${userId}: ${errorText(error)}`,
-      );
-      if (error instanceof SupabaseCallError && error.failure === SupabaseFailure.RATE_LIMITED) {
-        throw SupabaseAuthClient.toBusinessException(error);
-      }
-      throw new BusinessException(AUTH_ERROR.PASSWORD_NOT_SAVED, ERROR_CODE.INTEGRATION_ERROR);
+      throw this.passwordNotSaved(error, dto.type, userId, AUTH_ERROR.PASSWORD_NOT_SAVED);
     }
+    // A reset link can get someone in before they use their invite.
+    await this.closeInvite(userId);
+  }
+
+  /** The invite is spent only once the password is saved, so a failure can simply be retried. */
+  private async acceptInvite(user: User, dto: SetPasswordDto): Promise<void> {
+    if (!user.isActive) {
+      throw new BusinessException(AUTH_ERROR.INVALID_SET_PASSWORD_LINK, ERROR_CODE.UNAUTHORIZED);
+    }
+    try {
+      await this.passwordApprovals.approve(user.id);
+      await this.authClient.completeInvite(user.id, dto.password);
+    } catch (error) {
+      throw this.passwordNotSaved(error, dto.type, user.id, AUTH_ERROR.INVITE_PASSWORD_NOT_SAVED);
+    }
+    await this.closeInvite(user.id);
+  }
+
+  private async closeInvite(userId: string): Promise<void> {
+    await this.users.update(
+      { id: userId, inviteTokenHash: Not(IsNull()) },
+      { inviteTokenHash: null },
+    );
+  }
+
+  private passwordNotSaved(
+    error: unknown,
+    type: SetPasswordDto['type'],
+    userId: string,
+    message: string,
+  ): BusinessException {
+    this.logger.error(`Password from a ${type} link not saved for ${userId}: ${errorText(error)}`);
+    if (error instanceof SupabaseCallError && error.failure === SupabaseFailure.RATE_LIMITED) {
+      return SupabaseAuthClient.toBusinessException(error);
+    }
+    return new BusinessException(message, ERROR_CODE.INTEGRATION_ERROR);
   }
 
   /**
@@ -238,6 +277,7 @@ export class AuthService {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      workType: user.workType,
       projects,
       notice:
         user.role !== UserRole.SUPER_ADMIN && projects.length === 0

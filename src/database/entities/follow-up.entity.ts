@@ -1,7 +1,14 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 
 import { PG_TYPE, TABLE } from '../../common/constants';
-import { EntryType, LeadStatus, LostReason } from '../../common/enums';
+import {
+  CallOutcome,
+  EntryType,
+  FollowUpChannel,
+  LeadStatus,
+  LostReason,
+  NextStepChannel,
+} from '../../common/enums';
 import { nullableNumericTransformer } from '../../common/utils/numeric.transformer';
 import { Lead } from './lead.entity';
 import { Location } from './location.entity';
@@ -69,6 +76,28 @@ export class FollowUp {
   /** Editable the same IST day only. */
   @Column({ name: 'next_follow_up_date', type: PG_TYPE.DATE, nullable: true })
   nextFollowUpDate: string | null;
+
+  /** India time, HH:MM. A time is what a reminder fires on. */
+  @Column({ name: 'next_follow_up_time', type: PG_TYPE.TEXT, nullable: true })
+  nextFollowUpTime: string | null;
+
+  @Column({ name: 'next_follow_up_channel', type: PG_TYPE.TEXT, nullable: true })
+  nextFollowUpChannel: NextStepChannel | null;
+
+  /** Visit, call or other. Null on entries older than the column. */
+  @Column({ name: 'channel', type: PG_TYPE.TEXT, nullable: true })
+  channel: FollowUpChannel | null;
+
+  @Column({ name: 'call_outcome', type: PG_TYPE.TEXT, nullable: true })
+  callOutcome: CallOutcome | null;
+
+  /** In the private recordings bucket, never the one holding visit photos. */
+  @Column({ name: 'recording_path', type: PG_TYPE.TEXT, nullable: true })
+  recordingPath: string | null;
+
+  /** So one recording can't prove two calls. */
+  @Column({ name: 'recording_sha256', type: PG_TYPE.TEXT, nullable: true })
+  recordingSha256: string | null;
 
   @Column({ name: 'location_id', type: PG_TYPE.UUID, nullable: true })
   locationId: string | null;

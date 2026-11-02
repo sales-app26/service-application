@@ -111,5 +111,13 @@ describe('Password changes behind a password guard (e2e)', () => {
     } finally {
       guardOpen = true;
     }
+
+    // An invite is spent only when the password is saved, so the same link still works.
+    const retry = await api.post('/auth/set-password', {
+      tokenHash,
+      type: 'invite',
+      password: 'long-enough-1',
+    });
+    expect(retry.status).toBe(200);
   });
 });

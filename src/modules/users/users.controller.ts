@@ -159,6 +159,21 @@ export class UsersController {
     return this.usersService.sendResetEmail(actor, params.id);
   }
 
+  @Post(`${ROUTE.ID_PARAM}/resend-invite`)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(SUCCESS_MESSAGE.INVITE_RESENT)
+  @ApiOperation({
+    summary: 'Email the invite again',
+    description:
+      'For a person the caller manages who has not set a password yet (`invitePending`). Sent through Brevo to their account email. The new link has no expiry; any earlier invite link stops working. The user must be active.',
+  })
+  resendInvite(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param() params: UuidParamDto,
+  ): Promise<{ email: string }> {
+    return this.usersService.resendInvite(actor, params.id);
+  }
+
   @Post(`${ROUTE.ID_PARAM}/reactivate`)
   @HttpCode(HttpStatus.OK)
   @ResponseMessage(SUCCESS_MESSAGE.USER_REACTIVATED)

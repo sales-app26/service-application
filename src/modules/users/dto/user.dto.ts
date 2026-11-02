@@ -14,7 +14,7 @@ import {
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
 import { PaginationQueryDto } from '../../../common/dto';
-import { UserRole } from '../../../common/enums';
+import { UserRole, WorkType } from '../../../common/enums';
 import { lowerTrimString, toBoolean, trimString } from '../../../common/utils';
 import { User } from '../../../database/entities';
 import { LeaveSpanDto } from '../../leaves/dto/leave.dto';
@@ -37,6 +37,9 @@ export class UserDto {
 
   @ApiProperty({ enum: UserRole })
   role: UserRole;
+
+  @ApiProperty({ enum: WorkType, description: 'Field, Calling or Both. Not a permission.' })
+  workType: WorkType;
 
   @ApiProperty()
   isActive: boolean;
@@ -62,6 +65,10 @@ export class UserDto {
   @ApiProperty()
   canManageAccount: boolean;
 
+  /** Invited but no password yet: the invite can be sent again. */
+  @ApiProperty()
+  invitePending: boolean;
+
   @ApiPropertyOptional({
     type: LeaveSpanDto,
     nullable: true,
@@ -82,11 +89,13 @@ export class UserDto {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      workType: user.workType,
       isActive: user.isActive,
       createdBy: user.createdBy,
       createdAt: user.createdAt,
       canManage,
       canManageAccount: canManage && canManageAccount,
+      invitePending: user.inviteTokenHash !== null,
       onLeave,
     };
   }
@@ -120,6 +129,14 @@ export class CreateUserDto {
   })
   @IsIn(CREATABLE_ROLES)
   role: UserRole;
+
+  @ApiPropertyOptional({
+    enum: WorkType,
+    description: 'Field, Calling or Both. Left out: Field for a sales person, Both for a manager.',
+  })
+  @IsOptional()
+  @IsEnum(WorkType)
+  workType?: WorkType;
 }
 
 export class UpdateUserDto {
@@ -140,6 +157,11 @@ export class UpdateUserDto {
   @IsString()
   @MaxLength(20)
   phone?: string | null;
+
+  @ApiPropertyOptional({ enum: WorkType, description: 'Field, Calling or Both.' })
+  @IsOptional()
+  @IsEnum(WorkType)
+  workType?: WorkType;
 }
 
 export class ChangeRoleDto {

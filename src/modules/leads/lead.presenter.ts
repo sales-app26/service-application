@@ -75,6 +75,8 @@ export class LeadPresenter {
       phone: lead.phone,
       status: lead.status,
       nextFollowUpDate: lead.nextFollowUpDate,
+      nextFollowUpTime: lead.nextFollowUpTime,
+      nextFollowUpChannel: lead.nextFollowUpChannel,
       overdueDays: overdueDays(lead, today),
       location: { id: lead.location.id, name: lead.location.name },
       // Null: not assigned yet.

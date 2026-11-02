@@ -65,6 +65,7 @@ export const envValidationSchema = Joi.object({
   [ENV.SUPABASE_SERVICE_ROLE_KEY]: Joi.string().min(20).required(),
   [ENV.SUPABASE_JWT_SECRET]: Joi.string().allow('').default(''),
   [ENV.SUPABASE_STORAGE_BUCKET]: Joi.string().default('sales-tracker'),
+  [ENV.SUPABASE_RECORDINGS_BUCKET]: Joi.string().default('sales-call-recordings'),
   [ENV.SUPABASE_TIMEOUT_MS]: Joi.number().integer().min(1000).default(10_000),
 
   // ----------------------------------------------------------------------- mail
@@ -74,6 +75,16 @@ export const envValidationSchema = Joi.object({
   [ENV.BREVO_API_URL]: Joi.string().uri().default('https://api.brevo.com'),
   [ENV.MAIL_FROM_EMAIL]: Joi.string().email().required(),
   [ENV.MAIL_FROM_NAME]: Joi.string().default('Pronttera Sales'),
+
+  // ------------------------------------------------------------------ reminders
+  // Without the VAPID keys reminders stay inside the app; phones get no push.
+  [ENV.REMINDERS_ENABLED]: Joi.boolean().default(true),
+  [ENV.VAPID_PUBLIC_KEY]: Joi.string().allow('').default(''),
+  [ENV.VAPID_PRIVATE_KEY]: Joi.string().allow('').default(''),
+  [ENV.VAPID_SUBJECT]: Joi.string()
+    .pattern(/^(mailto:|https:)/u)
+    .allow('')
+    .default(''),
 
   // ---------------------------------------------------------------- visit proof
   [ENV.CAPTURE_TOKEN_SECRET]: Joi.string().min(MIN_SECRET_LENGTH).required(),

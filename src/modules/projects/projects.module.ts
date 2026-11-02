@@ -1,3 +1,4 @@
+import { CallsModule } from '../calls/calls.module';
 import { Module } from '@nestjs/common';
 
 import { MembersService } from './members.service';
@@ -5,6 +6,7 @@ import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 
 @Module({
+  imports: [CallsModule],
   controllers: [ProjectsController],
   providers: [ProjectsService, MembersService],
 })

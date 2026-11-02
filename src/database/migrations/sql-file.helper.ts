@@ -42,6 +42,10 @@ export const SQL_FILE = {
   UNASSIGNED_LEADS_DOWN: '12_unassigned_leads_down.sql',
   LEAD_PHONE_OPTIONAL: '13_lead_phone_optional.sql',
   LEAD_PHONE_OPTIONAL_DOWN: '13_lead_phone_optional_down.sql',
+  INVITE_LINKS: '14_invite_links.sql',
+  INVITE_LINKS_DOWN: '14_invite_links_down.sql',
+  CALLS_AND_REMINDERS: '15_calls_and_reminders.sql',
+  CALLS_AND_REMINDERS_DOWN: '15_calls_and_reminders_down.sql',
 } as const;
 
 export const readSqlFile = (fileName: string): string =>

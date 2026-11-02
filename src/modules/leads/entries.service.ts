@@ -11,9 +11,16 @@ import {
   ERROR_CODE,
   FOLLOW_UP_ERROR,
   VISIT_ERROR,
+  CALL_ERROR,
 } from '../../common/constants';
 import { AuthenticatedUser } from '../../common/decorators';
-import { EntryType, LeadStatus, ProjectStatus } from '../../common/enums';
+import {
+  CallOutcome,
+  EntryType,
+  FollowUpChannel,
+  LeadStatus,
+  ProjectStatus,
+} from '../../common/enums';
 import {
   BusinessException,
   ConflictBusinessException,
@@ -21,7 +28,7 @@ import {
   IntegrationException,
   NotFoundBusinessException,
 } from '../../common/exceptions/business.exception';
-import { isSameIstDay, isUniqueViolation, istToday } from '../../common/utils';
+import { addDays, isSameIstDay, isUniqueViolation, istToday } from '../../common/utils';
 import { VisitConfig } from '../../config/configuration';
 import { FollowUp, Lead } from '../../database/entities';
 import { CoverageService } from '../access/coverage.service';
@@ -30,6 +37,11 @@ import { LocationsService } from '../locations/locations.service';
 import { SupabaseStorageClient } from '../supabase/supabase-storage.client';
 import { PricingService } from '../pricing/pricing.service';
 import { PhotoUrlDto } from '../visits/dto/visit.dto';
+import {
+  CallRecordingService,
+  StoredRecording,
+  UploadedRecording,
+} from '../calls/call-recording.service';
 import { StoredVisitProof, VisitProofService } from '../visits/visit-proof.service';
 import { ChangeStatusDto, EditEntryDto, EntryDto, LogFollowUpDto } from './dto/entry.dto';
 import { EntrySaveResultDto } from './dto/entry-result.dto';
@@ -42,7 +54,11 @@ import {
   assertManualStatusChange,
   conversionAfter,
   dealChangesAfter,
+  isUnreachedCall,
+  resolveCallOutcome,
+  resolveChannel,
   resolveNextFollowUpDate,
+  resolveNextStep,
   resolveReason,
 } from './lead-rules';
 import { LeadStateService } from './lead-state.service';
@@ -82,6 +98,7 @@ export class EntriesService {
     private readonly leadAccess: LeadAccessService,
     private readonly locations: LocationsService,
     private readonly visitProof: VisitProofService,
+    private readonly recordings: CallRecordingService,
     private readonly leadState: LeadStateService,
     private readonly entryPresenter: EntryPresenter,
     private readonly leadPresenter: LeadPresenter,
@@ -105,6 +122,7 @@ export class EntriesService {
     leadId: string,
     dto: LogFollowUpDto,
     photo?: UploadedPhoto,
+    recordingFile?: UploadedRecording,
   ): Promise<EntrySaveResultDto> {
     const replay = await this.replayFor(dto.clientRequestId, actor, leadId);
     if (replay) return replay;
@@ -112,27 +130,45 @@ export class EntriesService {
     const lead = await this.leadAccess.findLiveLead(leadId);
     await this.assertCanLog(actor, lead);
     this.access.assertWritable(lead.project);
-    assertFollowUpStatus(lead.status, dto.status);
+
+    const channel = resolveChannel(dto.channel, lead.project.type, actor.workType);
+    const callOutcome = resolveCallOutcome(channel, dto.callOutcome);
+    // An unanswered call is an attempt: the lead stays where it is, and comes up again tomorrow
+    // unless the caller says when.
+    const unreached = isUnreachedCall(callOutcome);
+    const status = unreached ? lead.status : dto.status;
+    if (!unreached) assertFollowUpStatus(lead.status, status);
 
     const now = new Date();
+    const today = istToday(now);
     const nextFollowUpDate = resolveNextFollowUpDate(
-      dto.status,
-      dto.nextFollowUpDate,
-      istToday(now),
+      status,
+      dto.nextFollowUpDate ?? (unreached ? addDays(today, 1) : undefined),
+      today,
     );
-    const reason = resolveReason(dto.status, dto.reason);
-    const deal = dealChangesAfter(dto.status, dto, await this.wonOffer(dto, lead));
+    const nextStep = resolveNextStep(nextFollowUpDate, dto);
+    const reason = unreached ? null : resolveReason(status, dto.reason);
+    const deal = unreached ? {} : dealChangesAfter(status, dto, await this.wonOffer(dto, lead));
     const locationName = this.locations.normaliseName(dto.location);
-    const needsProof = this.visitProof.requiresProof(lead.project.type);
+    const needsProof = channel === FollowUpChannel.VISIT;
     const proofInput = { ...dto, photo };
     if (needsProof) {
       this.visitProof.validate(proofInput, actor, now);
     }
+    const preparedRecording =
+      callOutcome === CallOutcome.SPOKE ? await this.recordings.prepare(recordingFile) : null;
 
     const entryId = randomUUID();
     let proof: StoredVisitProof | null = null;
+    let recording: StoredRecording | null = null;
 
     try {
+      if (preparedRecording) {
+        recording = await this.recordings.store(preparedRecording, {
+          projectId: lead.projectId,
+          entryId,
+        });
+      }
       if (needsProof) {
         proof = await this.visitProof.store(proofInput, {
           projectId: lead.projectId,
@@ -157,7 +193,8 @@ export class EntriesService {
           throw new NotFoundBusinessException(FOLLOW_UP_ERROR.NOT_FOUND);
         }
         // Re-checked against the locked row: an admin may have changed it.
-        assertFollowUpStatus(locked.status, dto.status);
+        const entryStatus = unreached ? locked.status : status;
+        if (!unreached) assertFollowUpStatus(locked.status, entryStatus);
 
         const location = await this.locations.findOrCreate(
           manager,
@@ -173,10 +210,15 @@ export class EntriesService {
           userId: actor.id,
           coveringForId: coveringFor,
           entryType: EntryType.FOLLOW_UP,
-          status: dto.status,
+          status: entryStatus,
           note: dto.note,
           reason,
           nextFollowUpDate,
+          ...nextStep,
+          channel,
+          callOutcome,
+          recordingPath: recording?.recordingPath ?? null,
+          recordingSha256: recording?.recordingSha256 ?? null,
           locationId: location.id,
           photoPath: proof?.photoPath ?? null,
           latitude: proof?.latitude ?? null,
@@ -193,16 +235,26 @@ export class EntriesService {
           Lead,
           { id: leadId },
           {
-            status: dto.status,
+            status: entryStatus,
             nextFollowUpDate,
+            ...nextStep,
             lastActivityAt: now,
-            ...conversionAfter(locked, dto.status, now),
+            ...conversionAfter(locked, entryStatus, now),
             ...deal,
           },
         );
       });
     } catch (error) {
       await this.visitProof.discard(proof);
+      await this.recordings.discard(recording);
+      if (
+        isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CLIENT_REQUEST) ||
+        this.recordings.isReuse(error)
+      ) {
+        const saved = await this.replayFor(dto.clientRequestId, actor, leadId);
+        if (saved) return saved;
+      }
+      if (this.recordings.isReuse(error)) throw this.recordings.usedError();
       if (
         isUniqueViolation(error, DB_CONSTRAINT.FOLLOW_UPS_CLIENT_REQUEST) ||
         this.visitProof.isTokenReuse(error)
@@ -244,6 +296,7 @@ export class EntriesService {
       dto.nextFollowUpDate,
       istToday(now),
     );
+    const nextStep = resolveNextStep(nextFollowUpDate, dto);
     const reason = resolveReason(dto.status, dto.reason);
     const deal = dealChangesAfter(dto.status, dto, await this.wonOffer(dto, lead));
     const entryId = randomUUID();
@@ -273,6 +326,7 @@ export class EntriesService {
           note: dto.note,
           reason,
           nextFollowUpDate,
+          ...nextStep,
           locationId: null,
           clientRequestId: dto.clientRequestId,
           createdAt: now,
@@ -287,6 +341,7 @@ export class EntriesService {
           {
             status: dto.status,
             nextFollowUpDate,
+            ...nextStep,
             lastActivityAt: now,
             ...conversionAfter(locked, dto.status, now),
             ...deal,
@@ -360,7 +415,17 @@ export class EntriesService {
 
       const changes: Partial<FollowUp> = {};
       if (dto.note !== undefined) changes.note = dto.note;
-      if (nextFollowUpDate !== undefined) changes.nextFollowUpDate = nextFollowUpDate;
+      const nextStep =
+        nextFollowUpDate !== undefined
+          ? resolveNextStep(nextFollowUpDate, {
+              nextFollowUpTime: dto.nextFollowUpTime,
+              nextFollowUpChannel: entry.nextFollowUpChannel,
+            })
+          : {};
+      if (nextFollowUpDate !== undefined) {
+        changes.nextFollowUpDate = nextFollowUpDate;
+        Object.assign(changes, nextStep);
+      }
       await manager.update(FollowUp, { id: entry.id }, changes);
 
       // An older entry's date is history; only the latest drives Due today.
@@ -370,7 +435,7 @@ export class EntriesService {
           order: { createdAt: 'DESC', id: 'DESC' },
         });
         if (latest?.id === entry.id) {
-          await manager.update(Lead, { id: lead.id }, { nextFollowUpDate });
+          await manager.update(Lead, { id: lead.id }, { nextFollowUpDate, ...nextStep });
         }
       }
     });
@@ -423,6 +488,22 @@ export class EntriesService {
     }
 
     const url = await this.storage.signedUrl(entry.photoPath);
+    if (!url) {
+      throw new IntegrationException(VISIT_ERROR.STORAGE_UNAVAILABLE);
+    }
+    return { url, expiresInSeconds: this.signedUrlTtlSeconds };
+  }
+
+  /** Whoever may see the entry may hear it, through a link that soon expires. */
+  async recordingUrl(
+    actor: AuthenticatedUser,
+    entryId: string,
+  ): Promise<{ url: string; expiresInSeconds: number }> {
+    const entry = await this.findViewableEntry(actor, entryId);
+    if (!entry.recordingPath) {
+      throw new NotFoundBusinessException(CALL_ERROR.NO_RECORDING);
+    }
+    const url = await this.recordings.signedUrl(entry.recordingPath);
     if (!url) {
       throw new IntegrationException(VISIT_ERROR.STORAGE_UNAVAILABLE);
     }

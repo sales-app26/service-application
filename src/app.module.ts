@@ -24,6 +24,7 @@ import { LeavesModule } from './modules/leaves/leaves.module';
 import { MediaModule } from './modules/media/media.module';
 import { NotificationSenderModule } from './modules/notifications/notification-sender.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { RemindersModule } from './modules/reminders/reminders.module';
 import { PricingModule } from './modules/pricing/pricing.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -83,6 +84,7 @@ const MILLISECONDS_PER_SECOND = 1_000;
     TransferRejectionsModule,
     LeaveLookupModule,
     NotificationSenderModule,
+    RemindersModule,
     MediaModule,
     GeoModule,
 

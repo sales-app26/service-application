@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, IntersectionType } from '@nestjs/swag
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
+  Matches,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -16,11 +17,20 @@ import {
 
 import { BUSINESS_RULE, SWAGGER_EXAMPLE } from '../../../common/constants';
 import { PaginationQueryDto } from '../../../common/dto';
-import { EntryType, LeadStatus, LostReason } from '../../../common/enums';
+import {
+  CallOutcome,
+  EntryType,
+  FollowUpChannel,
+  LeadStatus,
+  LostReason,
+  NextStepChannel,
+} from '../../../common/enums';
 import { emptyToUndefined, toNumber, trimString, trimToNull } from '../../../common/utils';
 import { IsIsoDate } from '../../../common/validators/is-iso-date.validator';
 import { LocationRefDto } from '../../locations/dto/location.dto';
 import { DealFieldsDto } from './deal.dto';
+
+const NEXT_TIME_PATTERN = /^([01][0-9]|2[0-3]):[0-5][0-9]$/u;
 
 export class PersonRefDto {
   @ApiProperty({ format: 'uuid' })
@@ -74,6 +84,30 @@ export class EntryDto {
 
   @ApiPropertyOptional({ nullable: true, type: String, example: SWAGGER_EXAMPLE.DATE })
   nextFollowUpDate: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    example: '16:00',
+    description: 'India time.',
+  })
+  nextFollowUpTime: string | null;
+
+  @ApiPropertyOptional({ enum: NextStepChannel, nullable: true })
+  nextFollowUpChannel: NextStepChannel | null;
+
+  @ApiPropertyOptional({
+    enum: FollowUpChannel,
+    nullable: true,
+    description: 'Null on entries older than the column.',
+  })
+  channel: FollowUpChannel | null;
+
+  @ApiPropertyOptional({ enum: CallOutcome, nullable: true })
+  callOutcome: CallOutcome | null;
+
+  @ApiProperty({ description: 'TRUE when the call has a recording. Fetch it with /recording.' })
+  hasRecording: boolean;
 
   @ApiPropertyOptional({ type: LocationRefDto, nullable: true, description: 'The typed location.' })
   location: LocationRefDto | null;
@@ -183,6 +217,24 @@ export class VisitProofFieldsDto {
  */
 export class EntryOutcomeFieldsDto extends DealFieldsDto {
   @ApiPropertyOptional({
+    example: '16:00',
+    description: 'With a next date only: India time, HH:MM. A reminder goes out at this time.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @Matches(NEXT_TIME_PATTERN, { message: 'Enter the time as HH:MM.' })
+  nextFollowUpTime?: string;
+
+  @ApiPropertyOptional({
+    enum: NextStepChannel,
+    description: 'With a next date only: a visit or a call.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(NextStepChannel)
+  nextFollowUpChannel?: NextStepChannel;
+
+  @ApiPropertyOptional({
     enum: LostReason,
     description: 'Only with Not interested or Lost; anything else is refused.',
   })
@@ -201,7 +253,34 @@ export class LogFollowUpDto extends IntersectionType(VisitProofFieldsDto, EntryO
   @IsUUID('4')
   clientRequestId: string;
 
-  @ApiProperty({ enum: LeadStatus, description: 'Not New. A Converted lead stays Converted.' })
+  @ApiPropertyOptional({
+    enum: FollowUpChannel,
+    description:
+      'Visit (door-to-door only; photo and position required), call, or other (online only). Left out: a visit door to door, otherwise other.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(FollowUpChannel)
+  channel?: FollowUpChannel;
+
+  @ApiPropertyOptional({
+    enum: CallOutcome,
+    description:
+      'Required on a call. `spoke` needs the recording. The others are attempts: no recording, and the lead keeps its status.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(CallOutcome)
+  callOutcome?: CallOutcome;
+
+  @ApiProperty({
+    enum: LeadStatus,
+    description: 'Not New. A Converted lead stays Converted. Ignored on an unanswered call.',
+  })
+  @ValidateIf(
+    (dto: { callOutcome?: CallOutcome }) =>
+      !dto.callOutcome || dto.callOutcome === CallOutcome.SPOKE,
+  )
   @IsEnum(LeadStatus)
   status: LeadStatus;
 
@@ -278,6 +357,17 @@ export class EditEntryDto {
   @ValidateIf((_, value) => value !== null)
   @IsIsoDate()
   nextFollowUpDate?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '16:00',
+    description: 'Sent with a new date. Left out, the new date has no time.',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_, value) => value !== null)
+  @Matches(NEXT_TIME_PATTERN, { message: 'Enter the time as HH:MM.' })
+  nextFollowUpTime?: string | null;
 }
 
 export class ListEntriesQueryDto extends PaginationQueryDto {}

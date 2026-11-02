@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 import { PG_TYPE, SQL_DEFAULT, TABLE } from '../../common/constants';
-import { UserRole } from '../../common/enums';
+import { UserRole, WorkType } from '../../common/enums';
 
 /**
  * One row per person, whatever their role (DB Design §2.1).
@@ -31,11 +31,26 @@ export class User {
   @Column({ name: 'role', type: PG_TYPE.TEXT })
   role: UserRole;
 
+  /** Field, Calling or Both: which work they do, not what they may do. */
+  @Column({ name: 'work_type', type: PG_TYPE.TEXT, default: WorkType.FIELD })
+  workType: WorkType;
+
+  /** The India day their morning summary last went out, so it goes once. */
+  @Column({ name: 'follow_up_digest_on', type: PG_TYPE.DATE, nullable: true })
+  followUpDigestOn: string | null;
+
   @Column({ name: 'is_active', type: PG_TYPE.BOOLEAN, default: true })
   isActive: boolean;
 
   @Column({ name: 'created_by', type: PG_TYPE.UUID, nullable: true })
   createdBy: string | null;
+
+  /**
+   * SHA-256 of the invite link's token, set until the person has a password. The link
+   * has no expiry: it ends when it is used, replaced by a resend, or the email changes.
+   */
+  @Column({ name: 'invite_token_hash', type: PG_TYPE.TEXT, nullable: true })
+  inviteTokenHash: string | null;
 
   /** Set when a Super Admin deleted the person: the row is anonymised, kept for history. */
   @Column({ name: 'deleted_at', type: PG_TYPE.TIMESTAMPTZ, nullable: true })

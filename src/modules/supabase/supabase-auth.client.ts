@@ -61,11 +61,11 @@ const EMAIL_EXISTS_CODES = new Set(['email_exists', 'user_already_exists']);
  * Two kinds of call:
  *  - **as the user** (`apikey` = anon key): password and refresh grants, setting
  *    a password with a link's token, logout.
- *  - **as the service** (`apikey` + bearer = service-role key): minting invite and
- *    recovery tokens, changing an email, deleting a half-created account.
+ *  - **as the service** (`apikey` + bearer = service-role key): creating an invited
+ *    login, minting recovery tokens, changing an email, deleting a half-created account.
  *
- * Supabase never emails anyone: it only mints the one-time token, and Brevo sends
- * the link (`MailService`).
+ * Supabase never emails anyone: it only creates the login or mints the recovery
+ * token, and Brevo sends the link (`MailService`).
  */
 @Injectable()
 export class SupabaseAuthClient {
@@ -149,18 +149,36 @@ export class SupabaseAuthClient {
 
   /**
    * Creates the login and emails a link to set the password (PRD §5.2).
-   * The returned id becomes `users.id`.
+   * The returned id becomes `users.id`. The link carries our `inviteToken`, not
+   * Supabase's: its tokens expire, and this one must not.
    */
-  async inviteUser(email: string, name: string): Promise<SupabaseAuthUser> {
-    const { user, hashedToken } = await this.generateLink('invite', email, { name });
+  async inviteUser(email: string, name: string, inviteToken: string): Promise<SupabaseAuthUser> {
+    const { user } = await this.generateLink('invite', email, { name });
     try {
-      await this.mail.sendAuthLink('invite', { email, name }, this.linkFor('invite', hashedToken));
+      await this.sendInviteEmail(email, name, inviteToken);
     } catch (error) {
       // No email went out, so don't leave a login nobody can reach; the admin can retry.
       await this.deleteUserAsAdmin(user.id);
       throw error;
     }
     return user;
+  }
+
+  /** Emails an invite link for a login that already exists. */
+  sendInviteEmail(email: string, name: string, inviteToken: string): Promise<void> {
+    return this.mail.sendAuthLink('invite', { email, name }, this.linkFor('invite', inviteToken));
+  }
+
+  /**
+   * Sets the first password from an invite link. Holding the link proves they read the
+   * email, so it is confirmed here too; Supabase refuses a password sign-in until it is.
+   */
+  async completeInvite(userId: string, password: string): Promise<void> {
+    await this.call('PUT', `/admin/users/${encodeURIComponent(userId)}`, {
+      key: this.config.serviceRoleKey,
+      bearer: this.config.serviceRoleKey,
+      body: { password, email_confirm: true },
+    });
   }
 
   /** Seeding only: a confirmed login with a known password. */

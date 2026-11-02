@@ -19,12 +19,18 @@ export class FakeSupabase {
   readonly users = new Map<string, AuthUser>();
   readonly objects = new Map<string, { body: Buffer; contentType: string }>();
   readonly invites: string[] = [];
+  /** Buckets made through the API, with whether they are public. */
+  readonly buckets = new Map<string, { public: boolean }>();
+  /** Web pushes received, by device. `/push/gone` answers 410, as a push service does. */
+  readonly pushes: { device: string; encrypted: boolean; vapid: boolean }[] = [];
   readonly recoveries: string[] = [];
   /** What Brevo was asked to send; the fake stands in for its transactional API. */
   readonly emails: { to: string; subject: string; text: string }[] = [];
   private readonly refreshTokens = new Map<string, string>();
   /** One-time `token_hash` values minted by generate_link, spent by /verify. */
   private readonly linkTokens = new Map<string, string>();
+  /** Invited logins whose email isn't confirmed yet: GoTrue refuses them a password sign-in. */
+  private readonly unconfirmed = new Set<string>();
   private server!: Server;
   url = '';
   /**
@@ -60,6 +66,11 @@ export class FakeSupabase {
 
   private async passwordChangeAllowed(userId: string): Promise<boolean> {
     return this.passwordGuard ? this.passwordGuard(userId) : true;
+  }
+
+  /** Every token Supabase minted runs out, as they all do within a day. */
+  expireLinks(): void {
+    this.linkTokens.clear();
   }
 
   private mint(userId: string): string {
@@ -108,6 +119,16 @@ export class FakeSupabase {
       this.emails.push({ to: mail.to[0].email, subject: mail.subject, text: mail.textContent });
       return send(res, 201, { messageId: randomUUID() });
     }
+    if (req.method === 'POST' && path.startsWith('/push/')) {
+      const device = path.slice('/push/'.length);
+      if (device === 'gone') return send(res, 410, {});
+      this.pushes.push({
+        device,
+        encrypted: req.headers['content-encoding'] === 'aes128gcm' && body.length > 0,
+        vapid: String(req.headers.authorization ?? '').startsWith('vapid '),
+      });
+      return send(res, 201, {});
+    }
     if (path.startsWith('/storage/v1')) {
       return this.storage(
         req,
@@ -138,6 +159,9 @@ export class FakeSupabase {
             msg: 'Invalid login credentials',
           });
         }
+        if (this.unconfirmed.has(user.id)) {
+          return send(res, 400, { error_code: 'email_not_confirmed', msg: 'Email not confirmed' });
+        }
         return send(res, 200, await this.session(user.id));
       }
       if (grant === 'refresh_token') {
@@ -164,6 +188,7 @@ export class FakeSupabase {
         }
         const user = { id: randomUUID(), email, password: null };
         this.users.set(user.id, user);
+        this.unconfirmed.add(user.id);
         this.invites.push(email);
         return send(res, 200, { id: user.id, email, hashed_token: this.mint(user.id) });
       }
@@ -182,6 +207,7 @@ export class FakeSupabase {
         });
       }
       this.linkTokens.delete(tokenHash); // single use
+      this.unconfirmed.delete(userId);
       return send(res, 200, await this.session(userId));
     }
 
@@ -207,12 +233,17 @@ export class FakeSupabase {
       const user = this.users.get(adminUser[1]);
       if (!user) return send(res, 404, { msg: 'User not found' });
       if (req.method === 'PUT') {
-        const changes = json() as { email?: string; password?: string };
+        const changes = json() as {
+          email?: string;
+          password?: string;
+          email_confirm?: boolean;
+        };
         if (changes.password && !(await this.passwordChangeAllowed(user.id))) {
           return send(res, 500, GUARD_REFUSAL);
         }
         if (changes.email) user.email = changes.email;
         if (changes.password) user.password = changes.password;
+        if (changes.email_confirm) this.unconfirmed.delete(user.id);
         return send(res, 200, { id: user.id, email: user.email });
       }
       if (req.method === 'DELETE') {
@@ -235,7 +266,20 @@ export class FakeSupabase {
     body: Buffer,
     json: () => Record<string, unknown>,
   ): void {
-    const signPrefix = `/object/sign/${this.bucket}`;
+    if (req.method === 'POST' && path === '/bucket') {
+      const { id, public: isPublic } = json() as { id: string; public: boolean };
+      if (this.buckets.has(id)) {
+        return send(res, 400, { statusCode: '409', error: 'Duplicate', message: 'already exists' });
+      }
+      this.buckets.set(id, { public: isPublic });
+      return send(res, 200, { name: id });
+    }
+    // The default bucket always exists; any other must have been made first.
+    const bucket = /^\/object\/(?:sign\/)?([^/]+)/u.exec(path)?.[1] ?? this.bucket;
+    if (bucket !== this.bucket && !this.buckets.has(bucket)) {
+      return send(res, 404, { statusCode: '404', error: 'not_found', message: 'Bucket not found' });
+    }
+    const signPrefix = `/object/sign/${bucket}`;
     if (req.method === 'POST' && path === signPrefix) {
       const { paths } = json() as { paths: string[] };
       return send(
@@ -261,7 +305,7 @@ export class FakeSupabase {
       return;
     }
 
-    const objectPrefix = `/object/${this.bucket}`;
+    const objectPrefix = `/object/${bucket}`;
     if (req.method === 'DELETE' && path === objectPrefix) {
       for (const prefix of (json() as { prefixes: string[] }).prefixes) this.objects.delete(prefix);
       return send(res, 200, []);
@@ -271,7 +315,7 @@ export class FakeSupabase {
       if (this.objects.has(key))
         return send(res, 400, { error: 'Duplicate', message: 'The resource already exists' });
       this.objects.set(key, { body, contentType: String(req.headers['content-type']) });
-      return send(res, 200, { Key: `${this.bucket}/${key}` });
+      return send(res, 200, { Key: `${bucket}/${key}` });
     }
 
     send(res, 404, { msg: `no fake for ${req.method} ${path}` });

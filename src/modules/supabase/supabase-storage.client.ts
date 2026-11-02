@@ -12,7 +12,8 @@ interface SignedUrlRow {
 }
 
 /**
- * Supabase Storage over its REST API, against one **private** bucket.
+ * Supabase Storage over its REST API. Visit photos and project images use the default bucket;
+ * call recordings pass their own, always private.
  *
  * Photos are never public (PRD §5.7): the database stores only the path, and
  * a viewer gets a short-lived signed URL from the API after the API has
@@ -37,11 +38,37 @@ export class SupabaseStorageClient {
     return this.config.storageBucket;
   }
 
+  /**
+   * Makes a private bucket if it isn't there yet; one that exists is left exactly as it is.
+   * Throws only when the bucket can't be made, which the upload that follows would hit anyway.
+   */
+  async ensurePrivateBucket(bucket: string): Promise<void> {
+    const response = await fetch(`${this.config.url}/storage/v1/bucket`, {
+      method: 'POST',
+      headers: { ...this.serviceHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: bucket, name: bucket, public: false }),
+      signal: AbortSignal.timeout(this.config.timeoutMs),
+    }).catch((error: Error) => {
+      this.logger.error(`Creating bucket ${bucket} failed: ${error.message}`);
+      throw new IntegrationException(VISIT_ERROR.STORAGE_UNAVAILABLE);
+    });
+    if (response.ok) return;
+    const text = await response.text();
+    if (/already exists|Duplicate/iu.test(text)) return;
+    this.logger.error(`Creating bucket ${bucket} -> ${response.status}: ${text}`);
+    throw new IntegrationException(VISIT_ERROR.STORAGE_UNAVAILABLE);
+  }
+
   /** Uploads bytes to `path`. Refuses to overwrite: every path is new. */
-  async upload(path: string, body: Buffer, contentType: string): Promise<void> {
+  async upload(
+    path: string,
+    body: Buffer,
+    contentType: string,
+    bucket: string = this.bucket,
+  ): Promise<void> {
     let response: Response;
     try {
-      response = await fetch(this.objectUrl(path), {
+      response = await fetch(this.objectUrl(path, bucket), {
         method: 'POST',
         headers: {
           ...this.serviceHeaders(),
@@ -64,10 +91,10 @@ export class SupabaseStorageClient {
   }
 
   /** Removes an upload whose entry failed to save, or a replaced project image. Never throws. */
-  async removeObjects(paths: string[]): Promise<void> {
+  async removeObjects(paths: string[], bucket: string = this.bucket): Promise<void> {
     if (paths.length === 0) return;
     try {
-      const response = await fetch(`${this.config.url}/storage/v1/object/${this.bucket}`, {
+      const response = await fetch(`${this.config.url}/storage/v1/object/${bucket}`, {
         method: 'DELETE',
         headers: { ...this.serviceHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ prefixes: paths }),
@@ -88,13 +115,16 @@ export class SupabaseStorageClient {
    * maps to null rather than failing the whole list — one missing photo should
    * not blank an admin's timeline.
    */
-  async signedUrls(paths: string[]): Promise<Map<string, string | null>> {
+  async signedUrls(
+    paths: string[],
+    bucket: string = this.bucket,
+  ): Promise<Map<string, string | null>> {
     const unique = [...new Set(paths.filter(Boolean))];
     const result = new Map<string, string | null>();
     if (unique.length === 0) return result;
 
     try {
-      const response = await fetch(`${this.config.url}/storage/v1/object/sign/${this.bucket}`, {
+      const response = await fetch(`${this.config.url}/storage/v1/object/sign/${bucket}`, {
         method: 'POST',
         headers: { ...this.serviceHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ expiresIn: this.signedUrlTtlSeconds, paths: unique }),
@@ -126,13 +156,13 @@ export class SupabaseStorageClient {
     return result;
   }
 
-  async signedUrl(path: string): Promise<string | null> {
-    return (await this.signedUrls([path])).get(path) ?? null;
+  async signedUrl(path: string, bucket: string = this.bucket): Promise<string | null> {
+    return (await this.signedUrls([path], bucket)).get(path) ?? null;
   }
 
-  private objectUrl(path: string): string {
+  private objectUrl(path: string, bucket: string): string {
     const encoded = path.split('/').map(encodeURIComponent).join('/');
-    return `${this.config.url}/storage/v1/object/${this.bucket}/${encoded}`;
+    return `${this.config.url}/storage/v1/object/${bucket}/${encoded}`;
   }
 
   private serviceHeaders(): Record<string, string> {
